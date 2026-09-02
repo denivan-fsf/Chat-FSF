@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  super_admin
+  manager
+  agent
+}
+
+enum WhatsappStatus {
+  connected
+  disconnected
+}
+
+enum ConversationStatus {
+  open
+  in_progress
+  waiting_customer
+  closed
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageStatus {
+  pending
+  sent
+  delivered
+  read
+  failed
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  name               String
+  email              String              @unique
+  passwordHash       String              @map("password_hash")
+  role               UserRole            @default(agent)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  whatsappNumbers    UserWhatsappNumber[]
+  assignedConversations Conversation[]   @relation("AssignedConversations")
+  sentMessages       Message[]           @relation("SentMessages")
+  conversationLogs   ConversationLog[]   @relation("ActorLogs")
+
+  @@map("users")
+}
+
+model WhatsappNumber {
+  id              String              @id @default(cuid())
+  phoneNumber     String              @map("phone_number")
+  name            String
+  status          WhatsappStatus       @default(disconnected)
+  webhookUrl      String?             @map("webhook_url")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  users           UserWhatsappNumber[]
+  conversations   Conversation[]
+
+  @@map("whatsapp_numbers")
+}
+
+model UserWhatsappNumber {
+  userId          String          @map("user_id")
+  whatsappNumberId String         @map("whatsapp_number_id")
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappNumber  WhatsappNumber  @relation(fields: [whatsappNumberId], references: [id], onDelete: Cascade)
+
+  @@id([userId, whatsappNumberId])
+  @@map("user_whatsapp_numbers")
+}
+
+model Contact {
+  id            String         @id @default(cuid())
+  phoneNumber   String         @unique @map("phone_number")
+  name          String?
+  profilePic    String?        @map("profile_pic")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  conversations Conversation[]
+
+  @@map("contacts")
+}
+
+model Conversation {
+  id              String               @id @default(cuid())
+  contactId       String               @map("contact_id")
+  whatsappNumberId String               @map("whatsapp_number_id")
+  assignedUserId  String?              @map("assigned_user_id")
+  status          ConversationStatus   @default(open)
+  lastMessageAt   DateTime?            @map("last_message_at")
+  lockUserId      String?              @map("lock_user_id")
+  lockExpiresAt   DateTime?            @map("lock_expires_at")
+  contact         Contact              @relation(fields: [contactId], references: [id])
+  whatsappNumber  WhatsappNumber       @relation(fields: [whatsappNumberId], references: [id])
+  assignedUser    User?                @relation("AssignedConversations", fields: [assignedUserId], references: [id])
+  messages        Message[]
+  logs            ConversationLog[]
+
+  @@index([status, lastMessageAt])
+  @@index([assignedUserId, status])
+  @@map("conversations")
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String           @map("conversation_id")
+  direction      MessageDirection
+  content        String           @db.LongText
+  mediaUrl       String?          @map("media_url")
+  sentByUserId   String?          @map("sent_by_user_id")
+  status         MessageStatus    @default(pending)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sentByUser     User?            @relation("SentMessages", fields: [sentByUserId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model ConversationLog {
+  id             String       @id @default(cuid())
+  conversationId String       @map("conversation_id")
+  actorUserId    String?      @map("actor_user_id")
+  action         String
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  actor          User?        @relation("ActorLogs", fields: [actorUserId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("conversation_logs")
+}

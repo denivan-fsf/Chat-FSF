@@ -1,0 +1,1 @@
+- [OpenAPI codegen compatibility](openapi-zod-compatibility.md) — keep schema primitives compatible with the workspace's Zod runtime.

@@ -2,21 +2,25 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: API for Atendimento Compartilhado, a unified WhatsApp Business support inbox.
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: dashboard
+  - name: conversations
+  - name: messages
+  - name: whatsapp
+  - name: users
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +28,375 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/session:
+    get:
+      operationId: getSession
+      tags: [auth]
+      summary: Get the current support agent session
+      responses:
+        "200":
+          description: Current session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in to the support workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get inbox totals and presence summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /whatsapp-numbers:
+    get:
+      operationId: listWhatsappNumbers
+      tags: [whatsapp]
+      summary: List WhatsApp Business numbers
+      responses:
+        "200":
+          description: Numbers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WhatsappNumber"
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List workspace users
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+  /conversations:
+    get:
+      operationId: listConversations
+      tags: [conversations]
+      summary: List conversations visible to the current user
+      parameters:
+        - name: numberId
+          in: query
+          schema:
+            type: [string, "null"]
+        - name: status
+          in: query
+          schema:
+            type: [string, "null"]
+        - name: assignedUserId
+          in: query
+          schema:
+            type: [string, "null"]
+        - name: search
+          in: query
+          schema:
+            type: [string, "null"]
+      responses:
+        "200":
+          description: Conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+  /conversations/{id}:
+    get:
+      operationId: getConversation
+      tags: [conversations]
+      summary: Get one conversation with messages
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
+    patch:
+      operationId: updateConversation
+      tags: [conversations]
+      summary: Update conversation status or assignment
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConversationUpdate"
+      responses:
+        "200":
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+  /conversations/{id}/lock:
+    post:
+      operationId: lockConversation
+      tags: [conversations]
+      summary: Acquire a temporary response lock
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Locked conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationLock"
+        "409":
+          description: Conversation locked by another user
+  /conversations/{id}/messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages in a conversation
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message through WhatsApp Business
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageInput"
+      responses:
+        "201":
+          description: Message queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+  /webhooks/whatsapp:
+    get:
+      operationId: verifyWhatsappWebhook
+      tags: [whatsapp]
+      summary: Verify a Meta WhatsApp webhook
+      parameters:
+        - name: hub.mode
+          in: query
+          schema: { type: string }
+        - name: hub.verify_token
+          in: query
+          schema: { type: string }
+        - name: hub.challenge
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: Webhook challenge }
+    post:
+      operationId: receiveWhatsappWebhook
+      tags: [whatsapp]
+      summary: Receive inbound WhatsApp Business events
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsappWebhook"
+      responses:
+        "200":
+          description: Event accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
 components:
+  parameters:
+    ConversationId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
   schemas:
     HealthStatus:
       type: object
       properties:
+        status: { type: string }
+      required: [status]
+    Ack:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+    LoginInput:
+      type: object
+      properties:
+        email: { type: string }
+        password: { type: string, minLength: 1 }
+      required: [email, password]
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role:
+          type: string
+          enum: [super_admin, manager, agent]
+        initials: { type: string }
+        online: { type: boolean }
+      required: [id, name, email, role, initials, online]
+    Session:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        accessToken: { type: string }
+        refreshToken: { type: string }
+      required: [user, accessToken, refreshToken]
+    WhatsappNumber:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        phoneNumber: { type: string }
         status:
           type: string
-      required:
-        - status
-
+          enum: [connected, disconnected]
+        unreadCount: { type: number }
+        teamCount: { type: number }
+      required: [id, name, phoneNumber, status, unreadCount, teamCount]
+    Contact:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        phoneNumber: { type: string }
+        profilePic: { type: [string, "null"] }
+        initials: { type: string }
+      required: [id, name, phoneNumber, profilePic, initials]
+    Conversation:
+      type: object
+      properties:
+        id: { type: string }
+        contact: { $ref: "#/components/schemas/Contact" }
+        whatsappNumber: { $ref: "#/components/schemas/WhatsappNumber" }
+        assignedUser: { $ref: "#/components/schemas/User" }
+        status:
+          type: string
+          enum: [open, in_progress, waiting_customer, closed]
+        lastMessagePreview: { type: string }
+        lastMessageAt: { type: string, format: date-time }
+        unreadCount: { type: number }
+        tags:
+          type: array
+          items: { type: string }
+        activeViewer: { type: [string, "null"] }
+        activeViewerName: { type: [string, "null"] }
+      required: [id, contact, whatsappNumber, assignedUser, status, lastMessagePreview, lastMessageAt, unreadCount, tags, activeViewer, activeViewerName]
+    ConversationDetail:
+      allOf:
+        - $ref: "#/components/schemas/Conversation"
+        - type: object
+          properties:
+            messages:
+              type: array
+              items: { $ref: "#/components/schemas/Message" }
+          required: [messages]
+    ConversationUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, in_progress, waiting_customer, closed]
+        assignedUserId: { type: [string, "null"] }
+        tags:
+          type: array
+          items: { type: string }
+    ConversationLock:
+      type: object
+      properties:
+        conversationId: { type: string }
+        lockedBy: { $ref: "#/components/schemas/User" }
+        expiresAt: { type: string, format: date-time }
+      required: [conversationId, lockedBy, expiresAt]
+    Message:
+      type: object
+      properties:
+        id: { type: string }
+        conversationId: { type: string }
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        content: { type: string }
+        mediaUrl: { type: [string, "null"] }
+        mediaType: { type: [string, "null"] }
+        sentByUser: { $ref: "#/components/schemas/User" }
+        status:
+          type: string
+          enum: [sent, delivered, read, pending, failed]
+        createdAt: { type: string, format: date-time }
+      required: [id, conversationId, direction, content, mediaUrl, mediaType, sentByUser, status, createdAt]
+    MessageInput:
+      type: object
+      properties:
+        content: { type: string, minLength: 1 }
+        mediaUrl: { type: [string, "null"] }
+        mediaType: { type: [string, "null"] }
+      required: [content]
+    DashboardSummary:
+      type: object
+      properties:
+        open: { type: number }
+        inProgress: { type: number }
+        waitingCustomer: { type: number }
+        closedToday: { type: number }
+        responseTimeMinutes: { type: number }
+        onlineAgents: { type: number }
+        totalAgents: { type: number }
+        connectedNumbers: { type: number }
+        totalNumbers: { type: number }
+      required: [open, inProgress, waitingCustomer, closedToday, responseTimeMinutes, onlineAgents, totalAgents, connectedNumbers, totalNumbers]
+    WhatsappWebhook:
+      type: object
+      additionalProperties: true
+      properties:
+        object: { type: string }
+    # Meta sends several payload variants, so the server validates the envelope
+    # and performs strict checks on the inner event before persisting it.

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Atendimento Compartilhado"
+description = "Sistema web para equipes gerenciarem múltiplos números de WhatsApp Business em uma caixa de entrada unificada, com atribuição, rastreabilidade, permissões e preparação para webhooks da Meta."
+version = "1.0.0"
+id = "artifacts/whatsapp-shared-inbox"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24243
+
+[services.development]
+run = "pnpm --filter @workspace/whatsapp-shared-inbox run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/whatsapp-shared-inbox", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/whatsapp-shared-inbox/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24243"
+BASE_PATH = "/"
