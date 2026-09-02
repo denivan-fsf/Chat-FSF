@@ -19,6 +19,41 @@ export interface LoginInput {
   password: string;
 }
 
+export interface ConnectWhatsappNumberInput {
+  /** @minLength 1 */
+  name: string;
+  /** @minLength 8 */
+  phoneNumber: string;
+}
+
+export type CreateUserInputRole = typeof CreateUserInputRole[keyof typeof CreateUserInputRole];
+
+
+export const CreateUserInputRole = {
+  manager: 'manager',
+  agent: 'agent',
+} as const;
+
+export interface CreateUserInput {
+  /** @minLength 2 */
+  name: string;
+  /** @minLength 3 */
+  email: string;
+  /** @minLength 4 */
+  password: string;
+  role: CreateUserInputRole;
+  numberIds?: string[];
+}
+
+export interface CreateContactInput {
+  /** @minLength 2 */
+  name: string;
+  /** @minLength 8 */
+  phoneNumber: string;
+  /** @nullable */
+  numberId?: string | null;
+}
+
 export type UserRole = typeof UserRole[keyof typeof UserRole];
 
 

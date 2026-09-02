@@ -1,11 +1,15 @@
 import { Router, type IRouter } from "express";
 import {
+  ConnectWhatsappNumberBody,
+  CreateContactBody,
+  CreateUserBody,
   LoginBody,
   ListConversationsQueryParams,
   SendMessageBody,
   UpdateConversationBody,
 } from "@workspace/api-zod";
 import { createHmac, randomUUID } from "node:crypto";
+import type { Request, Response, NextFunction } from "express";
 import { broadcastRealtime } from "../lib/realtime";
 
 type Role = "super_admin" | "manager" | "agent";
@@ -63,6 +67,8 @@ type Conversation = {
   activeViewerName: string | null;
   messages: Message[];
 };
+
+type AuthenticatedRequest = Request & { supportUser?: User };
 
 const users: User[] = [
   { id: "u-ana", name: "Ana Souza", email: "ana@atende.local", role: "agent", initials: "AS", online: true },
@@ -189,42 +195,187 @@ const tokenFor = (userId: string, kind: "access" | "refresh") =>
     .update(`${kind}:${userId}`)
     .digest("hex");
 
-const currentUser = users[0];
-
 const router: IRouter = Router();
 
-router.get("/auth/session", (_req, res) => {
-  res.json({ user: currentUser, accessToken: tokenFor(currentUser.id, "access"), refreshToken: tokenFor(currentUser.id, "refresh") });
+const passwords: Record<string, string> = {
+  "u-ana": "casa123",
+  "u-rafael": "casa123",
+  "u-marina": "casa123",
+  "u-admin": "casa123",
+};
+
+const userNumberAccess: Record<string, string[]> = {
+  "u-ana": ["wa-1", "wa-2"],
+  "u-rafael": ["wa-1", "wa-2", "wa-3"],
+  "u-marina": ["wa-1"],
+  "u-admin": ["wa-1", "wa-2", "wa-3"],
+};
+const lockExpiries = new Map<string, number>();
+
+const getRequestUser = (req: Request) => {
+  const sessionUserId = req.cookies?.session_user_id;
+  if (typeof sessionUserId === "string") {
+    const sessionUser = users.find((user) => user.id === sessionUserId);
+    if (sessionUser) return sessionUser;
+  }
+  const authorization = req.headers.authorization;
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+  return users.find((user) => tokenFor(user.id, "access") === token);
+};
+
+const isManager = (user: User) => user.role === "manager" || user.role === "super_admin";
+const canAccessNumber = (user: User, numberId: string) =>
+  isManager(user) || (userNumberAccess[user.id] ?? []).includes(numberId);
+const initialsFor = (name: string) => name.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
+const publicSession = (user: User) => ({
+  user,
+  accessToken: tokenFor(user.id, "access"),
+  refreshToken: tokenFor(user.id, "refresh"),
+});
+
+const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  const user = getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Sua sessão expirou. Entre novamente." });
+  (req as AuthenticatedRequest).supportUser = user;
+  return next();
+};
+
+router.get("/auth/session", (req, res) => {
+  const user = getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Nenhuma sessão ativa." });
+  return res.json(publicSession(user));
 });
 
 router.post("/auth/login", (req, res) => {
   const result = LoginBody.safeParse(req.body);
   if (!result.success) return res.status(400).json({ error: "Informe e-mail e senha válidos." });
-  const user = users.find((item) => item.email === result.data.email) ?? currentUser;
-  return res.json({ user, accessToken: tokenFor(user.id, "access"), refreshToken: tokenFor(user.id, "refresh") });
+  const user = users.find((item) => item.email.toLowerCase() === result.data.email.toLowerCase() && passwords[item.id] === result.data.password);
+  if (!user) return res.status(401).json({ error: "E-mail ou senha inválidos." });
+  res.cookie("session_user_id", user.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+  return res.json(publicSession(user));
 });
 
-router.get("/dashboard/summary", (_req, res) => {
+router.post("/auth/logout", (req, res) => {
+  res.clearCookie("session_user_id");
+  return res.status(204).send();
+});
+
+router.use(requireAuth);
+
+router.get("/dashboard/summary", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
+  const visibleConversations = conversations.filter((item) => canAccessNumber(user, item.whatsappNumber.id));
   res.json({
-    open: conversations.filter((item) => item.status === "open").length,
-    inProgress: conversations.filter((item) => item.status === "in_progress").length,
-    waitingCustomer: conversations.filter((item) => item.status === "waiting_customer").length,
-    closedToday: conversations.filter((item) => item.status === "closed").length,
+    open: visibleConversations.filter((item) => item.status === "open").length,
+    inProgress: visibleConversations.filter((item) => item.status === "in_progress").length,
+    waitingCustomer: visibleConversations.filter((item) => item.status === "waiting_customer").length,
+    closedToday: visibleConversations.filter((item) => item.status === "closed").length,
     responseTimeMinutes: 6.4,
     onlineAgents: users.filter((item) => item.online).length,
     totalAgents: users.length,
-    connectedNumbers: numbers.filter((item) => item.status === "connected").length,
-    totalNumbers: numbers.length,
+    connectedNumbers: numbers.filter((item) => item.status === "connected" && canAccessNumber(user, item.id)).length,
+    totalNumbers: numbers.filter((item) => canAccessNumber(user, item.id)).length,
   });
 });
 
-router.get("/whatsapp-numbers", (_req, res) => res.json(numbers));
+router.get("/whatsapp-numbers", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
+  return res.json(numbers.filter((number) => canAccessNumber(user, number.id)));
+});
+
+router.post("/whatsapp-numbers", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
+  if (!isManager(user)) return res.status(403).json({ error: "Somente gestores podem conectar números." });
+  const parsed = ConnectWhatsappNumberBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Informe o nome e o telefone do número." });
+  const phoneNumber = parsed.data.phoneNumber.trim();
+  if (numbers.some((number) => number.phoneNumber.replace(/\D/g, "") === phoneNumber.replace(/\D/g, ""))) {
+    return res.status(409).json({ error: "Este número já está cadastrado." });
+  }
+  const number: WhatsappNumber = {
+    id: randomUUID(),
+    name: parsed.data.name.trim(),
+    phoneNumber,
+    status: "connected",
+    unreadCount: 0,
+    teamCount: 1,
+  };
+  numbers.push(number);
+  userNumberAccess[user.id] = [...(userNumberAccess[user.id] ?? []), number.id];
+  broadcastRealtime({ type: "number.created", number });
+  return res.status(201).json(number);
+});
+
 router.get("/users", (_req, res) => res.json(users));
 
+router.post("/users", (req, res) => {
+  const actor = (req as AuthenticatedRequest).supportUser!;
+  if (!isManager(actor)) return res.status(403).json({ error: "Somente gestores podem adicionar atendentes." });
+  const parsed = CreateUserBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Preencha nome, e-mail, papel e senha." });
+  if (users.some((user) => user.email.toLowerCase() === parsed.data.email.toLowerCase())) {
+    return res.status(409).json({ error: "Este e-mail já está cadastrado." });
+  }
+  const user: User = {
+    id: randomUUID(),
+    name: parsed.data.name.trim(),
+    email: parsed.data.email.trim().toLowerCase(),
+    role: parsed.data.role,
+    initials: initialsFor(parsed.data.name),
+    online: false,
+  };
+  users.push(user);
+  passwords[user.id] = parsed.data.password;
+  userNumberAccess[user.id] = parsed.data.numberIds ?? [];
+  broadcastRealtime({ type: "user.created", user });
+  return res.status(201).json(user);
+});
+
+router.post("/contacts", (req, res) => {
+  const actor = (req as AuthenticatedRequest).supportUser!;
+  const parsed = CreateContactBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Informe nome e telefone do contato." });
+  const selectedNumber = numbers.find((number) =>
+    (!parsed.data.numberId || number.id === parsed.data.numberId) && canAccessNumber(actor, number.id),
+  );
+  if (!selectedNumber) return res.status(403).json({ error: "Você não tem acesso a esse número." });
+  const contact: Contact = {
+    id: randomUUID(),
+    name: parsed.data.name.trim(),
+    phoneNumber: parsed.data.phoneNumber.trim(),
+    profilePic: null,
+    initials: initialsFor(parsed.data.name),
+  };
+  const conversation: Conversation = {
+    id: randomUUID(),
+    contact,
+    whatsappNumber: selectedNumber,
+    assignedUser: actor,
+    status: "open",
+    lastMessagePreview: "Novo contato cadastrado",
+    lastMessageAt: new Date().toISOString(),
+    unreadCount: 0,
+    tags: [],
+    activeViewer: null,
+    activeViewerName: null,
+    messages: [],
+  };
+  conversations.unshift(conversation);
+  broadcastRealtime({ type: "conversation.created", conversationId: conversation.id });
+  return res.status(201).json(conversation);
+});
+
 router.get("/conversations", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
   const parsed = ListConversationsQueryParams.safeParse(req.query);
   const filters = parsed.success ? parsed.data : {};
   const data = conversations
+    .filter((item) => canAccessNumber(user, item.whatsappNumber.id))
     .filter((item) => !filters.numberId || item.whatsappNumber.id === filters.numberId)
     .filter((item) => !filters.status || item.status === filters.status)
     .filter((item) => !filters.assignedUserId || item.assignedUser.id === filters.assignedUserId)
@@ -234,16 +385,20 @@ router.get("/conversations", (req, res) => {
 });
 
 router.get("/conversations/:id", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
   const conversation = conversations.find((item) => item.id === req.params.id);
   if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+  if (!canAccessNumber(user, conversation.whatsappNumber.id)) return res.status(403).json({ error: "Você não tem acesso a esta conversa." });
   return res.json(conversation);
 });
 
 router.patch("/conversations/:id", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
   const parsed = UpdateConversationBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados de atualização inválidos." });
   const conversation = conversations.find((item) => item.id === req.params.id);
   if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+  if (!canAccessNumber(user, conversation.whatsappNumber.id)) return res.status(403).json({ error: "Você não tem acesso a esta conversa." });
   if (parsed.data.status) conversation.status = parsed.data.status;
   if (parsed.data.tags) conversation.tags = parsed.data.tags;
   if (parsed.data.assignedUserId !== undefined) {
@@ -254,36 +409,56 @@ router.patch("/conversations/:id", (req, res) => {
 });
 
 router.post("/conversations/:id/lock", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
   const conversation = conversations.find((item) => item.id === req.params.id);
   if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
-  const lockOwner = conversation.activeViewer && conversation.activeViewer !== currentUser.id
+  if (!canAccessNumber(user, conversation.whatsappNumber.id)) return res.status(403).json({ error: "Você não tem acesso a esta conversa." });
+  const existingExpiry = lockExpiries.get(conversation.id);
+  if (existingExpiry && existingExpiry <= Date.now()) {
+    conversation.activeViewer = null;
+    conversation.activeViewerName = null;
+    lockExpiries.delete(conversation.id);
+  }
+  const lockOwner = conversation.activeViewer && conversation.activeViewer !== user.id
     ? users.find((item) => item.id === conversation.activeViewer)
-    : currentUser;
-  if (conversation.activeViewer && conversation.activeViewer !== currentUser.id) {
+    : user;
+  if (conversation.activeViewer && conversation.activeViewer !== user.id) {
     return res.status(409).json({ error: `Conversa em atendimento por ${lockOwner?.name ?? "outro atendente"}.` });
   }
-  conversation.activeViewer = currentUser.id;
-  conversation.activeViewerName = currentUser.name;
+  conversation.activeViewer = user.id;
+  conversation.activeViewerName = user.name;
+  const expiresAt = Date.now() + 5 * 60_000;
+  lockExpiries.set(conversation.id, expiresAt);
   res.json({
     conversationId: conversation.id,
-    lockedBy: currentUser,
-    expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+    lockedBy: user,
+    expiresAt: new Date(expiresAt).toISOString(),
   });
   return;
 });
 
 router.get("/conversations/:id/messages", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
   const conversation = conversations.find((item) => item.id === req.params.id);
   if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+  if (!canAccessNumber(user, conversation.whatsappNumber.id)) return res.status(403).json({ error: "Você não tem acesso a esta conversa." });
   return res.json(conversation.messages);
 });
 
 router.post("/conversations/:id/messages", (req, res) => {
+  const user = (req as AuthenticatedRequest).supportUser!;
   const parsed = SendMessageBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "A mensagem não pode estar vazia." });
   const conversation = conversations.find((item) => item.id === req.params.id);
   if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
-  if (conversation.activeViewer && conversation.activeViewer !== currentUser.id) {
+  if (!canAccessNumber(user, conversation.whatsappNumber.id)) return res.status(403).json({ error: "Você não tem acesso a esta conversa." });
+  const existingExpiry = lockExpiries.get(conversation.id);
+  if (existingExpiry && existingExpiry <= Date.now()) {
+    conversation.activeViewer = null;
+    conversation.activeViewerName = null;
+    lockExpiries.delete(conversation.id);
+  }
+  if (conversation.activeViewer && conversation.activeViewer !== user.id) {
     return res.status(409).json({ error: "Esta conversa está bloqueada por outro atendente." });
   }
   const message: Message = {
@@ -293,7 +468,7 @@ router.post("/conversations/:id/messages", (req, res) => {
     content: parsed.data.content,
     mediaUrl: parsed.data.mediaUrl ?? null,
     mediaType: parsed.data.mediaType ?? null,
-    sentByUser: currentUser,
+    sentByUser: user,
     status: "sent",
     createdAt: new Date().toISOString(),
   };

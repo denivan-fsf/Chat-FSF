@@ -15,6 +15,7 @@ tags:
   - name: messages
   - name: whatsapp
   - name: users
+  - name: contacts
 paths:
   /healthz:
     get:
@@ -58,6 +59,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Session"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: End the current support workspace session
+      responses:
+        "204": { description: Session ended }
   /dashboard/summary:
     get:
       operationId: getDashboardSummary
@@ -84,6 +92,23 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/WhatsappNumber"
+    post:
+      operationId: connectWhatsappNumber
+      tags: [whatsapp]
+      summary: Connect a WhatsApp Business number to the workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectWhatsappNumberInput"
+      responses:
+        "201":
+          description: Connected number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappNumber"
   /users:
     get:
       operationId: listUsers
@@ -98,6 +123,41 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Add a support workspace user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserInput"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /contacts:
+    post:
+      operationId: createContact
+      tags: [contacts]
+      summary: Add a contact and open a conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactInput"
+      responses:
+        "201":
+          description: Created contact conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
   /conversations:
     get:
       operationId: listConversations
@@ -271,6 +331,32 @@ components:
         email: { type: string }
         password: { type: string, minLength: 1 }
       required: [email, password]
+    ConnectWhatsappNumberInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        phoneNumber: { type: string, minLength: 8 }
+      required: [name, phoneNumber]
+    CreateUserInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        email: { type: string, minLength: 3 }
+        password: { type: string, minLength: 4 }
+        role:
+          type: string
+          enum: [manager, agent]
+        numberIds:
+          type: array
+          items: { type: string }
+      required: [name, email, password, role]
+    CreateContactInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2 }
+        phoneNumber: { type: string, minLength: 8 }
+        numberId: { type: [string, "null"] }
+      required: [name, phoneNumber]
     User:
       type: object
       properties:

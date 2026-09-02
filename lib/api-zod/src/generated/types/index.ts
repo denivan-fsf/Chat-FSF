@@ -7,6 +7,7 @@
  */
 
 export * from './ack';
+export * from './connectWhatsappNumberInput';
 export * from './contact';
 export * from './conversation';
 export * from './conversationDetail';
@@ -14,6 +15,9 @@ export * from './conversationLock';
 export * from './conversationStatus';
 export * from './conversationUpdate';
 export * from './conversationUpdateStatus';
+export * from './createContactInput';
+export * from './createUserInput';
+export * from './createUserInputRole';
 export * from './dashboardSummary';
 export * from './healthStatus';
 export * from './listConversationsParams';

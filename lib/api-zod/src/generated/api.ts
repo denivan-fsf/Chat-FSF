@@ -59,6 +59,12 @@ export const LoginResponse = zod.object({
 
 
 /**
+ * @summary End the current support workspace session
+ */
+export const LogoutResponse = zod.void()
+
+
+/**
  * @summary Get inbox totals and presence summary
  */
 export const GetDashboardSummaryResponse = zod.object({
@@ -89,6 +95,29 @@ export const ListWhatsappNumbersResponse = zod.array(ListWhatsappNumbersResponse
 
 
 /**
+ * @summary Connect a WhatsApp Business number to the workspace
+ */
+
+export const connectWhatsappNumberBodyPhoneNumberMin = 8;
+
+
+
+export const ConnectWhatsappNumberBody = zod.object({
+  "name": zod.string().min(1),
+  "phoneNumber": zod.string().min(connectWhatsappNumberBodyPhoneNumberMin)
+})
+
+export const ConnectWhatsappNumberResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "phoneNumber": zod.string(),
+  "status": zod.enum(['connected', 'disconnected']),
+  "unreadCount": zod.number(),
+  "teamCount": zod.number()
+})
+
+
+/**
  * @summary List workspace users
  */
 export const ListUsersResponseItem = zod.object({
@@ -100,6 +129,104 @@ export const ListUsersResponseItem = zod.object({
   "online": zod.boolean()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
+
+
+/**
+ * @summary Add a support workspace user
+ */
+export const createUserBodyNameMin = 2;
+
+export const createUserBodyEmailMin = 3;
+
+export const createUserBodyPasswordMin = 4;
+
+
+
+export const CreateUserBody = zod.object({
+  "name": zod.string().min(createUserBodyNameMin),
+  "email": zod.string().min(createUserBodyEmailMin),
+  "password": zod.string().min(createUserBodyPasswordMin),
+  "role": zod.enum(['manager', 'agent']),
+  "numberIds": zod.array(zod.string()).optional()
+})
+
+export const CreateUserResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['super_admin', 'manager', 'agent']),
+  "initials": zod.string(),
+  "online": zod.boolean()
+})
+
+
+/**
+ * @summary Add a contact and open a conversation
+ */
+export const createContactBodyNameMin = 2;
+
+export const createContactBodyPhoneNumberMin = 8;
+
+
+
+export const CreateContactBody = zod.object({
+  "name": zod.string().min(createContactBodyNameMin),
+  "phoneNumber": zod.string().min(createContactBodyPhoneNumberMin),
+  "numberId": zod.string().nullish()
+})
+
+export const CreateContactResponse = zod.object({
+  "id": zod.string(),
+  "contact": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "phoneNumber": zod.string(),
+  "profilePic": zod.string().nullable(),
+  "initials": zod.string()
+}),
+  "whatsappNumber": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "phoneNumber": zod.string(),
+  "status": zod.enum(['connected', 'disconnected']),
+  "unreadCount": zod.number(),
+  "teamCount": zod.number()
+}),
+  "assignedUser": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['super_admin', 'manager', 'agent']),
+  "initials": zod.string(),
+  "online": zod.boolean()
+}),
+  "status": zod.enum(['open', 'in_progress', 'waiting_customer', 'closed']),
+  "lastMessagePreview": zod.string(),
+  "lastMessageAt": zod.coerce.date(),
+  "unreadCount": zod.number(),
+  "tags": zod.array(zod.string()),
+  "activeViewer": zod.string().nullable(),
+  "activeViewerName": zod.string().nullable()
+}).and(zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "conversationId": zod.string(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "mediaUrl": zod.string().nullable(),
+  "mediaType": zod.string().nullable(),
+  "sentByUser": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['super_admin', 'manager', 'agent']),
+  "initials": zod.string(),
+  "online": zod.boolean()
+}),
+  "status": zod.enum(['sent', 'delivered', 'read', 'pending', 'failed']),
+  "createdAt": zod.coerce.date()
+}))
+}))
 
 
 /**
