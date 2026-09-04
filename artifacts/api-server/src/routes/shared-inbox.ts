@@ -1,3 +1,5 @@
+import bcrypt from 'bcryptjs';
+import { supabase } from '../../../lib/supabase';
 import { Router, type IRouter } from "express";
 import {
   ConnectWhatsappNumberBody,
@@ -246,18 +248,46 @@ router.get("/auth/session", (req, res) => {
   return res.json(publicSession(user));
 });
 
-router.post("/auth/login", (req, res) => {
-  const result = LoginBody.safeParse(req.body);
-  if (!result.success) return res.status(400).json({ error: "Informe e-mail e senha válidos." });
-  const user = users.find((item) => item.email.toLowerCase() === result.data.email.toLowerCase() && passwords[item.id] === result.data.password);
-  if (!user) return res.status(401).json({ error: "E-mail ou senha inválidos." });
-  res.cookie("session_user_id", user.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-  return res.json(publicSession(user));
+router.post("/auth/login", async (req, res) => {
+  try {
+    const result = LoginBody.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: "Informe e-mail e senha válidos." });
+    }
+
+    const { email, password } = result.data;
+
+    // Busca o usuário na tabela 'users' do Supabase
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email.toLowerCase())
+      .single();
+
+    if (error || !user) {
+      return res.status(401).json({ error: "E-mail ou senha inválidos." });
+    }
+
+    // Valida a senha enviada com o hash salvo no banco
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "E-mail ou senha inválidos." });
+    }
+
+    // Grava o cookie de sessão
+    res.cookie("session_user_id", user.id, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json(publicSession(user));
+  } catch (err) {
+    console.error("Erro na rota de login:", err);
+    return res.status(500).json({ error: "Erro interno no servidor." });
+  }
 });
 
 router.post("/auth/logout", (req, res) => {
