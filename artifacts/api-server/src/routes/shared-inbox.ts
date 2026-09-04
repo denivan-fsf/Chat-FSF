@@ -1,4 +1,18 @@
 // @ts-nocheck
+import { Router } from "express";
+import bcrypt from "bcryptjs";
+import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
+
+const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { persistSession: false },
+  realtime: {
+    transport: WebSocket
+  }
+});
 import bcrypt from 'bcryptjs';
 import { Router, type IRouter } from "express";
 import {
