@@ -1,20 +1,7 @@
-// @ts-nocheck
-import { Router } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
-
-const supabaseUrl = process.env.SUPABASE_URL || "";
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { persistSession: false },
-  realtime: {
-    transport: WebSocket
-  }
-});
-import bcrypt from 'bcryptjs';
-import { Router, type IRouter } from "express";
 import {
   ConnectWhatsappNumberBody,
   CreateContactBody,
@@ -25,9 +12,17 @@ import {
   UpdateConversationBody,
 } from "@workspace/api-zod";
 import { createHmac, randomUUID } from "node:crypto";
-import type { Request, Response, NextFunction } from "express";
 import { broadcastRealtime } from "../lib/realtime";
 
+const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { persistSession: false },
+  realtime: {
+    transport: WebSocket
+  }
+});
 
 type Role = "super_admin" | "manager" | "agent";
 type ConversationStatus = "open" | "in_progress" | "waiting_customer" | "closed";
@@ -229,17 +224,6 @@ const userNumberAccess: Record<string, string[]> = {
 };
 const lockExpiries = new Map<string, number>();
 
-const getRequestUser = (req: Request) => {
-  const sessionUserId = req.cookies?.session_user_id;
-  if (typeof sessionUserId === "string") {
-    const sessionUser = users.find((user) => user.id === sessionUserId);
-    if (sessionUser) return sessionUser;
-  }
-  const authorization = req.headers.authorization;
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
-  return users.find((user) => tokenFor(user.id, "access") === token);
-};
-
 const isManager = (user: User) => user.role === "manager" || user.role === "super_admin";
 const canAccessNumber = (user: User, numberId: string) =>
   isManager(user) || (userNumberAccess[user.id] ?? []).includes(numberId);
@@ -250,15 +234,52 @@ const publicSession = (user: User) => ({
   refreshToken: tokenFor(user.id, "refresh"),
 });
 
-const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-  const user = getRequestUser(req);
+const getRequestUser = async (req: Request): Promise<User | null> => {
+  const sessionUserId = req.cookies?.session_user_id;
+
+  if (typeof sessionUserId === "string") {
+    const localUser = users.find((user) => user.id === sessionUserId);
+    if (localUser) return localUser;
+
+    const { data: dbUser } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", sessionUserId)
+      .single();
+
+    if (dbUser) {
+      const appUser: User = {
+        id: dbUser.id,
+        name: dbUser.name || dbUser.email.split("@")[0],
+        email: dbUser.email,
+        role: dbUser.role || "super_admin",
+        initials: initialsFor(dbUser.name || dbUser.email),
+        online: true,
+      };
+
+      if (!users.some((u) => u.id === appUser.id)) {
+        users.push(appUser);
+        userNumberAccess[appUser.id] = ["wa-1", "wa-2", "wa-3"];
+      }
+
+      return appUser;
+    }
+  }
+
+  const authorization = req.headers.authorization;
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+  return users.find((user) => tokenFor(user.id, "access") === token) || null;
+};
+
+const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
+  const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Sua sessão expirou. Entre novamente." });
   (req as AuthenticatedRequest).supportUser = user;
   return next();
 };
 
-router.get("/auth/session", (req, res) => {
-  const user = getRequestUser(req);
+router.get("/auth/session", async (req, res) => {
+  const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Nenhuma sessão ativa." });
   return res.json(publicSession(user));
 });
@@ -272,33 +293,44 @@ router.post("/auth/login", async (req, res) => {
 
     const { email, password } = result.data;
 
-    // Busca o usuário na tabela 'users' do Supabase
     const { data: user, error } = await supabase
       .from("users")
       .select("*")
-      .eq("email", email.toLowerCase())
+      .ilike("email", email.trim())
       .single();
 
     if (error || !user) {
       return res.status(401).json({ error: "E-mail ou senha inválidos." });
     }
 
-    // Valida a senha enviada com o hash salvo no banco
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
     if (!isPasswordValid) {
       return res.status(401).json({ error: "E-mail ou senha inválidos." });
     }
 
-    // Grava o cookie de sessão
-    res.cookie("session_user_id", user.id, {
+    const appUser: User = {
+      id: user.id,
+      name: user.name || "Usuário",
+      email: user.email,
+      role: user.role || "super_admin",
+      initials: initialsFor(user.name || user.email),
+      online: true,
+    };
+
+    if (!users.some((u) => u.id === appUser.id)) {
+      users.push(appUser);
+      userNumberAccess[appUser.id] = ["wa-1", "wa-2", "wa-3"];
+    }
+
+    res.cookie("session_user_id", appUser.id, {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    return res.json(publicSession(user));
+    return res.json(publicSession(appUser));
   } catch (err) {
     console.error("Erro na rota de login:", err);
     return res.status(500).json({ error: "Erro interno no servidor." });
