@@ -1,0 +1,5 @@
+{
+  "buildCommand": "pnpm --filter ./artifacts/whatsapp-shared-inbox run build",
+  "outputDirectory": "artifacts/whatsapp-shared-inbox/dist",
+  "installCommand": "pnpm install"
+}
