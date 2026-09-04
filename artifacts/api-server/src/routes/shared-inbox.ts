@@ -18,7 +18,10 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { persistSession: false },
+  realtime: { global: { headers: {} }, timeout: 0, params: { eventsPerSecond: 0 } }
+});
 
 type Role = "super_admin" | "manager" | "agent";
 type ConversationStatus = "open" | "in_progress" | "waiting_customer" | "closed";
