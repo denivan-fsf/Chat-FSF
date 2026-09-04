@@ -1,0 +1,9 @@
+# Supabase
+SUPABASE_URL=https://nrcfdmjfczscwfqrwcck.supabase.co
+SUPABASE_ANON_KEY=sb_publishable_X5TR5w7SOOnib1q-u4ehWQ_vYmpbjBx
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_CYMbFMcsZKb73rfes69bGA_50jQVk3L
+# Servidor
+PORT=3001
+NODE_ENV=development
+
+# WhatsApp (Meta) deixe vazio por enquanto, vamos cadastrar depois pelo painel
