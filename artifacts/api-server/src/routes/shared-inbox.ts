@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import { supabase } from '../../../lib/supabase';
 import { Router, type IRouter } from "express";
 import {
   ConnectWhatsappNumberBody,
@@ -13,6 +12,12 @@ import {
 import { createHmac, randomUUID } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { broadcastRealtime } from "../lib/realtime";
+
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 type Role = "super_admin" | "manager" | "agent";
 type ConversationStatus = "open" | "in_progress" | "waiting_customer" | "closed";
