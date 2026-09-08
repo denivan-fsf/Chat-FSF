@@ -1,4 +1,11 @@
 import React, { useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+// Chaves diretas extraídas do seu projeto mapeado no Supabase
+const supabaseUrl = 'https://supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5yY2ZkbWpmY3pzY3dmcXJ3Y2NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjU4MDMzNDUsImV4cCI6MjA0MTM3OTM0NX0.0NnZz_P13yv_JdfhY3h5_h1j9_v4h_j8_h12_j3_h_j4';
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -9,25 +16,25 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await fetch('https://onrender.com', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+      // Autentica direto na raiz do banco de dados
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password
       });
       
-      if (!response.ok) throw new Error();
+      if (error) throw error;
       
       alert("Autenticação realizada com sucesso!");
       window.location.href = '/dashboard';
-    } catch (err) {
-      alert("Erro no login: Confira seu e-mail e senha.");
+    } catch (err: any) {
+      alert("Erro no login: " + (err.message || "Confira seu e-mail e senha."));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ backgroundColor: '#0d231d', display: 'flex', width: '100vw', height: '100vh', alignItems: 'center', justifyContext: 'center', justifyContent: 'center', fontFamily: 'sans-serif', margin: 0 }}>
+    <div style={{ backgroundColor: '#0d231d', display: 'flex', width: '100vw', height: '100vh', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif', margin: 0 }}>
       <div style={{ display: 'flex', width: '100%', maxWidth: '850px', backgroundColor: '#fff', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', minHeight: '480px', margin: 'auto' }}>
         
         {/* Lado Esquerdo */}
