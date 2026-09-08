@@ -1,11 +1,4 @@
 import React, { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-// Chaves diretas extraídas do seu projeto mapeado no Supabase
-const supabaseUrl = 'https://supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5yY2ZkbWpmY3pzY3dmcXJ3Y2NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjU4MDMzNDUsImV4cCI6MjA0MTM3OTM0NX0.0NnZz_P13yv_JdfhY3h5_h1j9_v4h_j8_h12_j3_h_j4';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,18 +9,34 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      // Autentica direto na raiz do banco de dados
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password
+      // Chamada HTTP nativa direta para a API de autenticação do seu Supabase
+      const response = await fetch('https://supabase.co', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5yY2ZkbWpmY3pzY3dmcXJ3Y2NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjU4MDMzNDUsImV4cCI6MjA0MTM3OTM0NX0.0NnZz_P13yv_JdfhY3h5_h1j9_v4h_j8_h12_j3_h_j4'
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password
+        })
       });
-      
-      if (error) throw error;
-      
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error_description || result.message || "Credenciais inválidas");
+      }
+
+      // Salva o token de sessão localmente caso o dashboard precise dele
+      if (result.access_token) {
+        localStorage.setItem('supabase.auth.token', result.access_token);
+      }
+
       alert("Autenticação realizada com sucesso!");
       window.location.href = '/dashboard';
     } catch (err: any) {
-      alert("Erro no login: " + (err.message || "Confira seu e-mail e senha."));
+      alert("Erro no login: " + err.message);
     } finally {
       setLoading(false);
     }
