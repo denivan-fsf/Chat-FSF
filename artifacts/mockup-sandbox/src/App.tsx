@@ -8,13 +8,16 @@ export default function LoginPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5yY2ZkbWpmY3pzY3dmcXJ3Y2NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjU4MDMzNDUsImV4cCI6MjA0MTM3OTM0NX0.0NnZz_P13yv_JdfhY3h5_h1j9_v4h_j8_h12_j3_h_j4';
+
     try {
-      // Chamada HTTP nativa direta para a API de autenticação do seu Supabase
       const response = await fetch('https://supabase.co', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5yY2ZkbWpmY3pzY3dmcXJ3Y2NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjU4MDMzNDUsImV4cCI6MjA0MTM3OTM0NX0.0NnZz_P13yv_JdfhY3h5_h1j9_v4h_j8_h12_j3_h_j4'
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`
         },
         body: JSON.stringify({
           email: email.trim(),
@@ -28,7 +31,6 @@ export default function LoginPage() {
         throw new Error(result.error_description || result.message || "Credenciais inválidas");
       }
 
-      // Salva o token de sessão localmente caso o dashboard precise dele
       if (result.access_token) {
         localStorage.setItem('supabase.auth.token', result.access_token);
       }
@@ -47,7 +49,7 @@ export default function LoginPage() {
       <div style={{ display: 'flex', width: '100%', maxWidth: '850px', backgroundColor: '#fff', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', minHeight: '480px', margin: 'auto' }}>
         
         {/* Lado Esquerdo */}
-        <div style={{ width: '50%', backgroundColor: '#0d231d', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', padding: '40px' }}>
+        <div style={{ width: '50%', backgroundColor: '#0d231d', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContext: 'center', justifyContent: 'center', color: '#fff', padding: '40px' }}>
           <div style={{ fontSize: '40px', marginBottom: '10px' }}>💬</div>
           <h2 style={{ fontSize: '24px', margin: '0 0 10px 0', fontWeight: 'bold' }}>Multi Chat FSF</h2>
           <p style={{ color: '#6ee7b7', margin: '0', fontSize: '14px' }}>Um inbox, todo o cuidado.</p>
