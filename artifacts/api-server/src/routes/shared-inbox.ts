@@ -1,29 +1,61 @@
 import { Router } from 'express';
+import { pool } from '@workspace/db';
+import { broadcastRealtime } from '../lib/realtime';
 
 const router = Router();
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase() || 'FS';
+const userFrom = (r:any) => r.user ? { id:r.user.id, name:r.user.name, email:r.user.email, role:r.user.role, initials:r.user.initials, online:true } : null;
 
-// Rota de recepção de mensagens vindas da Z-API
-router.post('/webhook/zapi', async (req, res) => {
-  try {
-    const payload = req.body;
-    
-    // Filtra apenas mensagens recebidas dos clientes
-    if (payload.type === 'ReceivedMessage' && payload.data) {
-      const { phone, senderName, text } = payload.data;
-      const messageContent = text?.message || '';
-
-      console.log(`[Z-API Webhook] Nova mensagem de ${senderName || 'Cliente'} (${phone}): ${messageContent}`);
-
-      // NOTA: As mensagens chegam aqui com sucesso! 
-      // Se o seu Supabase Realtime estiver integrado via Prisma/Drizzle nas rotas principais,
-      // os logs acima vão monitorar a entrada enquanto o banco de dados processa os esquemas locais.
-    }
-
-    return res.status(200).json({ status: 'success' });
-  } catch (error) {
-    console.error('Erro ao processar webhook da Z-API:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+async function currentUser(req:any) {
+  const token = req.cookies?.fsf_access_token || (req.headers.authorization||'').replace(/^Bearer\s+/i,'');
+  if (!token || !process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) return null;
+  const resp = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, { headers:{ apikey:process.env.SUPABASE_ANON_KEY, Authorization:`Bearer ${token}` }});
+  if (!resp.ok) return null;
+  const auth:any = await resp.json();
+  const q = await pool.query('select id,name,email,role,initials from public.profiles where id=$1',[auth.id]);
+  if (!q.rows[0]) {
+    const name = auth.user_metadata?.name || auth.email?.split('@')[0] || 'Usuário';
+    const created = await pool.query('insert into public.profiles (id,name,email,role,initials) values ($1,$2,$3,$4,$5) returning id,name,email,role,initials',[auth.id,name,auth.email,'agent',initials(name)]);
+    return userFrom({user:created.rows[0]});
   }
-});
+  return userFrom({user:q.rows[0]});
+}
+function requireAuth(handler:any) { return async (req:any,res:any,next:any)=>{ try { const u=await currentUser(req); if(!u) return res.status(401).json({error:'Não autenticado'}); req.currentUser=u; return handler(req,res,next);} catch(e){return next(e);} }; }
 
+router.post('/auth/login', async (req:any,res:any) => {
+  const {email,password}=req.body||{};
+  if(!email||!password) return res.status(400).json({error:'E-mail e senha são obrigatórios'});
+  if(!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) return res.status(500).json({error:'Supabase não configurado'});
+  const response=await fetch(`${process.env.SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:'POST',headers:{apikey:process.env.SUPABASE_ANON_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+  const data:any=await response.json();
+  if(!response.ok) return res.status(401).json({error:data?.error_description||'Credenciais inválidas'});
+  res.cookie('fsf_access_token',data.access_token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:process.env.NODE_ENV==='production'?'none':'lax',maxAge:(data.expires_in||3600)*1000,path:'/'});
+  const req2:any={cookies:{fsf_access_token:data.access_token},headers:{}}; const user=await currentUser(req2);
+  return res.json({user,accessToken:data.access_token,refreshToken:data.refresh_token});
+});
+router.get('/auth/session', async (req:any,res:any)=>{ const u=await currentUser(req); if(!u)return res.status(401).json({error:'Sem sessão'}); return res.json({user:u,accessToken:'cookie',refreshToken:''}); });
+router.post('/auth/logout',(req:any,res:any)=>{res.clearCookie('fsf_access_token',{path:'/'});res.status(204).end();});
+
+router.get('/dashboard/summary', requireAuth(async (_req:any,res:any)=>{
+ const q=await pool.query(`select count(*) filter(where status='open') open,count(*) filter(where status='in_progress') ip,count(*) filter(where status='waiting_customer') wc,count(*) filter(where status='closed' and last_message_at::date=current_date) closed from public.conversations`);
+ const u=await pool.query('select count(*) from public.profiles'); const n=await pool.query(`select count(*) total,count(*) filter(where status='connected') connected from public.whatsapp_numbers`);
+ res.json({open:+q.rows[0].open,inProgress:+q.rows[0].ip,waitingCustomer:+q.rows[0].wc,closedToday:+q.rows[0].closed,responseTimeMinutes:0,onlineAgents:+u.rows[0].count,totalAgents:+u.rows[0].count,connectedNumbers:+n.rows[0].connected,totalNumbers:+n.rows[0].total});
+}));
+router.get('/users', requireAuth(async (_:any,res:any)=>{const q=await pool.query('select id,name,email,role,initials from public.profiles order by name');res.json(q.rows.map((r:any)=>({...r,online:false})));}));
+router.post('/users', requireAuth(async (_:any,res:any)=>res.status(501).json({error:'Crie usuários pelo Supabase Auth para manter as senhas seguras.'})));
+router.get('/whatsapp-numbers', requireAuth(async (_:any,res:any)=>{const q=await pool.query(`select n.*,coalesce(sum(c.unread_count),0) unread_count from public.whatsapp_numbers n left join public.conversations c on c.whatsapp_number_id=n.id group by n.id order by n.created_at`);res.json(q.rows.map((r:any)=>({id:r.id,name:r.name,phoneNumber:r.phone_number,status:r.status,unreadCount:+r.unread_count,teamCount:0})));}));
+router.post('/whatsapp-numbers', requireAuth(async (req:any,res:any)=>{const {name,phoneNumber}=req.body;const q=await pool.query('insert into public.whatsapp_numbers(name,phone_number) values($1,$2) returning *',[name,phoneNumber]);const r=q.rows[0];res.status(201).json({id:r.id,name:r.name,phoneNumber:r.phone_number,status:r.status,unreadCount:0,teamCount:0});}));
+
+const convSql=`select c.*,ct.name contact_name,ct.phone_number contact_phone,ct.profile_pic,wn.name number_name,wn.phone_number number_phone,wn.status number_status,p.id user_id,p.name user_name,p.email user_email,p.role user_role,p.initials user_initials from public.conversations c join public.contacts ct on ct.id=c.contact_id join public.whatsapp_numbers wn on wn.id=c.whatsapp_number_id left join public.profiles p on p.id=c.assigned_user_id`;
+const mapConv=(r:any)=>({id:r.id,contact:{id:r.contact_id,name:r.contact_name,phoneNumber:r.contact_phone,profilePic:r.profile_pic,initials:initials(r.contact_name)},whatsappNumber:{id:r.whatsapp_number_id,name:r.number_name,phoneNumber:r.number_phone,status:r.number_status,unreadCount:0,teamCount:0},assignedUser:r.user_id?{id:r.user_id,name:r.user_name,email:r.user_email,role:r.user_role,initials:r.user_initials,online:false}:null,status:r.status,lastMessagePreview:r.last_message_preview,lastMessageAt:r.last_message_at,unreadCount:r.unread_count,tags:r.tags||[],activeViewer:null,activeViewerName:null});
+router.get('/conversations', requireAuth(async (req:any,res:any)=>{const args:any[]=[];let where='';if(req.query.numberId){args.push(req.query.numberId);where+=` and c.whatsapp_number_id=$${args.length}`;}if(req.query.status){args.push(req.query.status);where+=` and c.status=$${args.length}`;}if(req.query.search){args.push(`%${req.query.search}%`);where+=` and (ct.name ilike $${args.length} or ct.phone_number ilike $${args.length})`;}const q=await pool.query(convSql+' where true'+where+' order by c.last_message_at desc',args);res.json(q.rows.map(mapConv));}));
+router.get('/conversations/:id', requireAuth(async (req:any,res:any)=>{const q=await pool.query(convSql+' where c.id=$1',[req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Conversa não encontrada'});const m=await pool.query('select * from public.messages where conversation_id=$1 order by created_at',[req.params.id]);res.json({...mapConv(q.rows[0]),messages:m.rows.map((x:any)=>({id:x.id,conversationId:x.conversation_id,direction:x.direction,content:x.content,mediaUrl:x.media_url,mediaType:x.media_type,sentByUser:null,status:x.status,createdAt:x.created_at}))});}));
+router.patch('/conversations/:id', requireAuth(async (req:any,res:any)=>{const {status,assignedUserId,tags}=req.body||{};const q=await pool.query('update public.conversations set status=coalesce($2,status),assigned_user_id=coalesce($3,assigned_user_id),tags=coalesce($4,tags),updated_at=now() where id=$1 returning id',[req.params.id,status,assignedUserId,tags?JSON.stringify(tags):null]);if(!q.rows[0])return res.status(404).json({error:'Conversa não encontrada'});const row=await pool.query(convSql+' where c.id=$1',[req.params.id]);broadcastRealtime({type:'conversation.updated',id:req.params.id});res.json(mapConv(row.rows[0]));}));
+router.post('/conversations/:id/lock', requireAuth(async (req:any,res:any)=>{const expires=new Date(Date.now()+120000);await pool.query(`insert into public.conversation_locks(conversation_id,locked_by,expires_at) values($1,$2,$3) on conflict(conversation_id) do update set locked_by=excluded.locked_by,expires_at=excluded.expires_at where public.conversation_locks.expires_at < now() or public.conversation_locks.locked_by=excluded.locked_by`,[req.params.id,req.currentUser.id,expires]);res.json({conversationId:req.params.id,lockedBy:req.currentUser,expiresAt:expires.toISOString()});}));
+router.get('/conversations/:id/messages', requireAuth(async (req:any,res:any)=>{const q=await pool.query('select * from public.messages where conversation_id=$1 order by created_at',[req.params.id]);res.json(q.rows.map((x:any)=>({id:x.id,conversationId:x.conversation_id,direction:x.direction,content:x.content,mediaUrl:x.media_url,mediaType:x.media_type,sentByUser:null,status:x.status,createdAt:x.created_at})));}));
+router.post('/conversations/:id/messages', requireAuth(async (req:any,res:any)=>{const {content,mediaUrl,mediaType}=req.body;const q=await pool.query('insert into public.messages(conversation_id,direction,content,media_url,media_type,sent_by_user_id,status) values($1,$2,$3,$4,$5,$6,$7) returning *',[req.params.id,'outbound',content,mediaUrl||null,mediaType||null,req.currentUser.id,'pending']);const x=q.rows[0];await pool.query('update public.conversations set last_message_preview=$2,last_message_at=now(),updated_at=now() where id=$1',[req.params.id,content]);broadcastRealtime({type:'message.created',conversationId:req.params.id});res.status(201).json({id:x.id,conversationId:x.conversation_id,direction:x.direction,content:x.content,mediaUrl:x.media_url,mediaType:x.media_type,sentByUser:req.currentUser,status:x.status,createdAt:x.created_at});}));
+router.post('/contacts', requireAuth(async (req:any,res:any)=>{const {name,phoneNumber,numberId}=req.body;const client=await pool.connect();try{await client.query('begin');let ct=await client.query('insert into public.contacts(name,phone_number) values($1,$2) on conflict(phone_number) do update set name=excluded.name returning *',[name,phoneNumber]);let numberId2=numberId;if(!numberId2){const n=await client.query('select id from public.whatsapp_numbers order by created_at limit 1');numberId2=n.rows[0]?.id;}if(!numberId2) throw new Error('Cadastre um número WhatsApp primeiro');const c=await client.query('insert into public.conversations(contact_id,whatsapp_number_id) values($1,$2) on conflict(contact_id,whatsapp_number_id) do update set updated_at=now() returning id',[ct.rows[0].id,numberId2]);await client.query('commit');const full=await pool.query(convSql+' where c.id=$1',[c.rows[0].id]);res.status(201).json({...mapConv(full.rows[0]),messages:[]});}catch(e:any){await client.query('rollback');res.status(400).json({error:e.message});}finally{client.release();}}));
+
+router.get('/webhooks/whatsapp', (_req:any,res:any)=>res.status(200).send('OK'));
+router.post(['/webhook/uzapi','/webhooks/whatsapp'], async (req:any,res:any)=>{try{const p=req.body||{};const data=p.data||p.message||p;const phone=String(data.phone||data.from||data.sender||data.remoteJid||'').replace(/@.+$/,'').replace(/\D/g,'');const name=data.senderName||data.pushName||data.name||'Cliente';const content=data.text?.message||data.text||data.body||data.message?.text||data.content||'';if(!phone){return res.status(200).json({ok:true,ignored:true});}const client=await pool.connect();try{await client.query('begin');const ct=await client.query('insert into public.contacts(name,phone_number) values($1,$2) on conflict(phone_number) do update set name=coalesce(nullif(excluded.name,\'Cliente\'),public.contacts.name) returning id,name',[name,phone]);const n=await client.query('select id from public.whatsapp_numbers order by created_at limit 1');if(!n.rows[0]) throw new Error('Nenhum número WhatsApp cadastrado');const cv=await client.query(`insert into public.conversations(contact_id,whatsapp_number_id,status,unread_count,last_message_preview,last_message_at) values($1,$2,'open',1,$3,now()) on conflict(contact_id,whatsapp_number_id) do update set unread_count=public.conversations.unread_count+1,last_message_preview=excluded.last_message_preview,last_message_at=now(),updated_at=now() returning id`,[ct.rows[0].id,n.rows[0].id,String(content)]);await client.query('insert into public.messages(conversation_id,direction,content,status,provider_message_id) values($1,$2,$3,$4,$5)',[cv.rows[0].id,'inbound',String(content),'delivered',data.id||data.messageId||null]);await client.query('commit');broadcastRealtime({type:'message.received',conversationId:cv.rows[0].id});return res.status(200).json({ok:true});}catch(e){await client.query('rollback');throw e;}finally{client.release();}}catch(e){console.error('Erro webhook UZAPI',e);return res.status(500).json({ok:false});}});
 export default router;
