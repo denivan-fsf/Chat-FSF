@@ -138,7 +138,7 @@ function Sidebar({ session, onLogout }: { session?: Session; onLogout: () => voi
       <Link href="/" className="brand-link" data-testid="link-home"><BrandMark /><span><b>atendimento</b><small>compartilhado</small></span></Link>
       <button className="collapse-btn" onClick={() => setCollapsed(!collapsed)} aria-label="Recolher menu" data-testid="button-collapse-sidebar"><Menu size={17} /></button>
     </div>
-    <div className="relative-anchor"><button className="workspace-switcher" onClick={() => setWorkspaceOpen((open) => !open)} aria-expanded={workspaceOpen} data-testid="button-workspace-switcher"><span className="workspace-dot" /><div><small>WORKSPACE</small><b>Casa Norte</b></div><ChevronDown size={15} /></button>{workspaceOpen && <MenuPanel className="workspace-menu"><MenuItem onClick={() => setWorkspaceOpen(false)}><Check size={14} /> Casa Norte <small>Ativo</small></MenuItem><MenuItem onClick={() => { setWorkspaceOpen(false); setLocation('/settings'); }}><SettingsIcon size={14} /> Configurar workspace</MenuItem></MenuPanel>}</div>
+    <div className="relative-anchor"><button className="workspace-switcher" onClick={() => setWorkspaceOpen((open) => !open)} aria-expanded={workspaceOpen} data-testid="button-workspace-switcher"><span className="workspace-dot" /><div><small>WORKSPACE</small><b>Fazenda São Francisco</b></div><ChevronDown size={15} /></button>{workspaceOpen && <MenuPanel className="workspace-menu"><MenuItem onClick={() => setWorkspaceOpen(false)}><Check size={14} /> Fazenda São Francisco <small>Ativo</small></MenuItem><MenuItem onClick={() => { setWorkspaceOpen(false); setLocation('/settings'); }}><SettingsIcon size={14} /> Configurar workspace</MenuItem></MenuPanel>}</div>
     <nav className="sidebar-nav" aria-label="Navegação principal">
       <span className="nav-kicker">Operação</span>
       {nav.slice(0, 1).map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`nav-item ${location === href ? 'active' : ''}`} data-testid={`link-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={18} /><span>{label}</span>{href === '/' && <i className="nav-count">8</i>}</Link>)}
@@ -329,10 +329,139 @@ function AuthLoading() { return <div className="auth-screen"><div className="aut
 function LoginScreen() {
   const login = useLogin();
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState('paulo@atende.local'); const [password, setPassword] = useState('casa123');
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const submit = (event: React.FormEvent) => { event.preventDefault(); setError(''); login.mutate({ data: { email, password } }, { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetSessionQueryKey() }); setLocation('/'); }, onError: () => setError('Confira seu e-mail e senha para continuar.') }); };
-  return <div className="auth-screen"><div className="auth-ornament"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><BrandMark /><span>um inbox, todo o cuidado</span></div><div className="auth-card"><div className="auth-card-head"><BrandMark /><span>CASA NORTE <i>•</i> WORKSPACE</span></div><h1>Seu time, <em>na mesma conversa.</em></h1><p className="auth-lead">Entre para cuidar de cada cliente com clareza, sem perder o fio.</p><form onSubmit={submit}><label>E-mail<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@empresa.com" required data-testid="input-login-email" /></label><label>Senha<div className="password-input"><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Sua senha" required data-testid="input-login-password" /><button type="button" onClick={() => setPassword('')} aria-label="Limpar senha" data-testid="button-clear-password"><X size={14} /></button></div></label>{error && <div className="form-error" data-testid="text-login-error">{error}</div>}<Button type="submit" className="login-button" disabled={login.isPending} data-testid="button-login">{login.isPending ? 'Entrando...' : 'Entrar no workspace'}<ArrowRight size={16} /></Button></form><div className="login-hint"><b>Acessos de demonstração</b><button type="button" onClick={() => { setEmail('paulo@atende.local'); setPassword('casa123'); }}>Administrador · paulo@atende.local</button><button type="button" onClick={() => { setEmail('ana@atende.local'); setPassword('casa123'); }}>Atendente · ana@atende.local</button><span>Senha dos acessos: <strong>casa123</strong></span></div><div className="auth-footer"><ShieldCheck size={14} /> Ambiente privado e protegido</div></div></div>;
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    setError('');
+
+    login.mutate(
+      {
+        data: {
+          email,
+          password,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: getGetSessionQueryKey(),
+          });
+
+          setLocation('/');
+        },
+
+        onError: () => {
+          setError('Confira seu e-mail e senha para continuar.');
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="auth-screen">
+      <div className="auth-ornament">
+        <div className="orbit orbit-one" />
+        <div className="orbit orbit-two" />
+
+        <BrandMark />
+
+        <span>um inbox, todo o cuidado</span>
+      </div>
+
+      <div className="auth-card">
+        <div className="auth-card-head">
+          <BrandMark />
+
+          <span>
+            FAZENDA SÃO FRANCISCO <i>•</i> WORKSPACE
+          </span>
+        </div>
+
+        <h1>
+          Seu time, <em>na mesma conversa.</em>
+        </h1>
+
+        <p className="auth-lead">
+          Entre para cuidar de cada cliente com clareza, sem perder o fio.
+        </p>
+
+        <form onSubmit={submit}>
+          <label>
+            E-mail
+
+            <input
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="voce@empresa.com"
+              required
+              data-testid="input-login-email"
+            />
+          </label>
+
+          <label>
+            Senha
+
+            <div className="password-input">
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Sua senha"
+                required
+                data-testid="input-login-password"
+              />
+
+              {password && (
+                <button
+                  type="button"
+                  onClick={() => setPassword('')}
+                  aria-label="Limpar senha"
+                  data-testid="button-clear-password"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </label>
+
+          {error && (
+            <div
+              className="form-error"
+              data-testid="text-login-error"
+            >
+              {error}
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            className="login-button"
+            disabled={login.isPending}
+            data-testid="button-login"
+          >
+            {login.isPending
+              ? 'Entrando...'
+              : 'Entrar no workspace'}
+
+            <ArrowRight size={16} />
+          </Button>
+        </form>
+
+        <div className="auth-footer">
+          <ShieldCheck size={14} />
+          Ambiente privado e protegido
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function NewContactModal({ numbers, pending, onClose, onSubmit }: {
@@ -434,7 +563,7 @@ function SettingsPage() {
   const verifyQuery = useVerifyWhatsappWebhook(verifyParams, { query: { enabled: false, queryKey: getVerifyWhatsappWebhookQueryKey(verifyParams) } });
   const receiveWebhook = useReceiveWhatsappWebhook();
   const [testStatus, setTestStatus] = useState('');
-  const [workspaceName, setWorkspaceName] = useState('Casa Norte');
+  const [workspaceName, setWorkspaceName] = useState('Fazenda São Francisco');
   const [saved, setSaved] = useState(false);
   if (sessionQuery.isError || !sessionQuery.data) return <LoginScreen />;
   if (sessionQuery.isPending) return <AuthLoading />;
