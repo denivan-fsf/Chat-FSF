@@ -27,7 +27,14 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(cors({
+  origin: (origin, cb) => {
+    const allowed = (process.env.CLIENT_URL || '').split(',').map(x=>x.trim()).filter(Boolean);
+    if (!origin || allowed.length === 0 || allowed.includes(origin)) return cb(null, true);
+    return cb(new Error('Origem não permitida pelo CORS'));
+  },
+  credentials: true,
+}));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
