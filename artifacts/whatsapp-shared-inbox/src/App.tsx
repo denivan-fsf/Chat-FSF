@@ -168,7 +168,14 @@ function Shell({ session, children }: { session?: Session; children: React.React
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const logout = useLogout();
   const [, setLocation] = useLocation();
-  const onLogout = () => logout.mutate(undefined, { onSettled: () => { queryClient.clear(); setLocation('/'); } });
+  const onLogout = () => logout.mutate(undefined, {
+  onSettled: () => {
+    localStorage.removeItem('fsf_access_token');
+    localStorage.removeItem('fsf_refresh_token');
+    queryClient.clear();
+    setLocation('/');
+  },
+});
   return <div className="app-shell"><div className={`mobile-scrim ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} /><div className={sidebarOpen ? 'sidebar-mobile-open' : ''}><Sidebar session={session} onLogout={onLogout} /></div><main className="app-main"><Topbar title={getPageTitle()} session={session} onMenu={() => setSidebarOpen(true)} onLogout={onLogout} />{children}</main></div>;
 }
 
@@ -334,33 +341,25 @@ function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
+ const submit = (event: React.FormEvent) => {
+  event.preventDefault();
+  setError('');
 
-    setError('');
-
-    login.mutate(
-      {
-        data: {
-          email,
-          password,
-        },
+  login.mutate(
+    { data: { email, password } },
+    {
+      onSuccess: (session) => {
+        localStorage.setItem('fsf_access_token', session.accessToken);
+        if (session.refreshToken) {
+          localStorage.setItem('fsf_refresh_token', session.refreshToken);
+        }
+        queryClient.invalidateQueries({ queryKey: getGetSessionQueryKey() });
+        setLocation('/');
       },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: getGetSessionQueryKey(),
-          });
-
-          setLocation('/');
-        },
-
-        onError: () => {
-          setError('Confira seu e-mail e senha para continuar.');
-        },
-      }
-    );
-  };
+      onError: () => setError('Confira seu e-mail e senha para continuar.'),
+    },
+  );
+};
 
   return (
     <div className="auth-screen">
