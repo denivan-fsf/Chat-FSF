@@ -149,7 +149,33 @@ router.post('/users', requireAuth(async (req:any,res:any)=>{
     return res.status(500).json({error:'Conta criada no Auth, mas não foi possível concluir o cadastro do atendente.'});
   }
 }));
-router.get('/whatsapp-numbers', requireAuth(async (_:any,res:any)=>{const q=await pool.query(`select n.*,coalesce(sum(c.unread_count),0) unread_count from public.whatsapp_numbers n left join public.conversations c on c.whatsapp_number_id=n.id group by n.id order by n.created_at`);res.json(q.rows.map((r:any)=>({id:r.id,name:r.name,phoneNumber:r.phone_number,status:r.status,unreadCount:+r.unread_count,teamCount:0})));}));
+router.get('/whatsapp-numbers', requireAuth(async (_:any,res:any)=>{
+  const q=await pool.query(`
+    select
+      n.*,
+      coalesce((
+        select sum(c.unread_count)
+        from public.conversations c
+        where c.whatsapp_number_id=n.id
+      ),0) as unread_count,
+      coalesce((
+        select count(*)
+        from public.workspace_user_numbers w
+        where w.whatsapp_number_id=n.id
+      ),0) as team_count
+    from public.whatsapp_numbers n
+    order by n.created_at
+  `);
+
+  res.json(q.rows.map((r:any)=>({
+    id:r.id,
+    name:r.name,
+    phoneNumber:r.phone_number,
+    status:r.status,
+    unreadCount:Number(r.unread_count),
+    teamCount:Number(r.team_count),
+  })));
+}));
 router.post('/whatsapp-numbers', requireAuth(async (req:any,res:any)=>{
   const {name,phoneNumber,phoneNumberId,uzapiUsername}=req.body||{};
   if(!name||!phoneNumber) return res.status(400).json({error:'Nome e telefone são obrigatórios'});
