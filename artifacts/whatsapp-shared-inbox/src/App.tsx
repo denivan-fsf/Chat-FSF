@@ -540,7 +540,319 @@ function NumbersPage() {
 function NumberCard({ number, onAccess }: { number: WhatsappNumber; onAccess: () => void }) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  return <article className="number-card animate-rise" data-testid={`card-number-${number.id}`}><div className="number-card-head"><div className="number-brand-icon"><Phone size={20} /></div><span className={`connection-badge ${number.status === 'connected' ? 'is-connected' : 'is-disconnected'}`}><span />{number.status === 'connected' ? 'Conectado' : 'Desconectado'}</span></div><h3>{number.name}</h3><p className="phone-display">{number.phoneNumber}</p><div className="number-stats"><span><b>{number.unreadCount}</b><small>não lidas</small></span><span><b>{number.teamCount}</b><small>pessoas com acesso</small></span></div><div className="number-card-actions"><Button variant="secondary" onClick={onAccess} data-testid={`button-manage-number-${number.id}`}><Users size={15} /> Gerenciar acesso</Button><div className="relative-anchor"><button className="icon-btn" onClick={() => setOptionsOpen((open) => !open)} aria-label="Mais opções do número" aria-expanded={optionsOpen} data-testid={`button-number-options-${number.id}`}><MoreHorizontal size={17} /></button>{optionsOpen && <MenuPanel className="number-menu"><MenuItem onClick={() => { setDetailsOpen(true); setOptionsOpen(false); }}><Phone size={14} /> Ver dados do número</MenuItem><MenuItem onClick={() => { onAccess(); setOptionsOpen(false); }}><Users size={14} /> Gerenciar acesso</MenuItem></MenuPanel>}</div></div>{detailsOpen && <Modal title={number.name} description="Dados do canal conectado" onClose={() => setDetailsOpen(false)}><div className="details-list"><span><small>Telefone</small><b>{number.phoneNumber}</b></span><span><small>Status</small><b>{number.status === 'connected' ? 'Conectado' : 'Desconectado'}</b></span><span><small>Pessoas com acesso</small><b>{number.teamCount}</b></span></div></Modal>}</article>;
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessSaving, setAccessSaving] = useState(false);
+  const [accessError, setAccessError] = useState('');
+  const [accessUsers, setAccessUsers] = useState<Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    online: boolean;
+    hasAccess: boolean;
+    initials: string;
+  }>>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+
+  const openAccess = async () => {
+    setAccessOpen(true);
+    setAccessLoading(true);
+    setAccessError('');
+
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('fsf_access_token');
+
+      const response = await fetch(
+        `${baseUrl}/api/whatsapp-numbers/${number.id}/access`,
+        {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Não foi possível carregar os acessos.');
+      }
+
+      setAccessUsers(data.users ?? []);
+      setSelectedUserIds(
+        (data.users ?? [])
+          .filter((user: any) => user.hasAccess)
+          .map((user: any) => user.id),
+      );
+    } catch (error) {
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível carregar os acessos.',
+      );
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const toggleUser = (userId: string) => {
+    setSelectedUserIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId],
+    );
+  };
+
+  const saveAccess = async () => {
+    setAccessSaving(true);
+    setAccessError('');
+
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('fsf_access_token');
+
+      const response = await fetch(
+        `${baseUrl}/api/whatsapp-numbers/${number.id}/access`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            userIds: selectedUserIds,
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Não foi possível salvar os acessos.');
+      }
+
+      setAccessOpen(false);
+      onAccess();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar os acessos.',
+      );
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
+  return (
+    <article
+      className="number-card animate-rise"
+      data-testid={`card-number-${number.id}`}
+    >
+      <div className="number-card-head">
+        <div className="number-brand-icon">
+          <Phone size={20} />
+        </div>
+
+        <span
+          className={`connection-badge ${
+            number.status === 'connected'
+              ? 'is-connected'
+              : 'is-disconnected'
+          }`}
+        >
+          <span />
+          {number.status === 'connected'
+            ? 'Conectado'
+            : 'Desconectado'}
+        </span>
+      </div>
+
+      <h3>{number.name}</h3>
+
+      <p className="phone-display">{number.phoneNumber}</p>
+
+      <div className="number-stats">
+        <span>
+          <b>{number.unreadCount}</b>
+          <small>não lidas</small>
+        </span>
+
+        <span>
+          <b>{number.teamCount}</b>
+          <small>pessoas com acesso</small>
+        </span>
+      </div>
+
+      <div className="number-card-actions">
+        <Button
+          variant="secondary"
+          onClick={openAccess}
+          data-testid={`button-manage-number-${number.id}`}
+        >
+          <Users size={15} />
+          Gerenciar acesso
+        </Button>
+
+        <div className="relative-anchor">
+          <button
+            className="icon-btn"
+            onClick={() => setOptionsOpen((open) => !open)}
+            aria-label="Mais opções do número"
+            aria-expanded={optionsOpen}
+            data-testid={`button-number-options-${number.id}`}
+          >
+            <MoreHorizontal size={17} />
+          </button>
+
+          {optionsOpen && (
+            <MenuPanel className="number-menu">
+              <MenuItem
+                onClick={() => {
+                  setDetailsOpen(true);
+                  setOptionsOpen(false);
+                }}
+              >
+                <Phone size={14} />
+                Ver dados do número
+              </MenuItem>
+
+              <MenuItem
+                onClick={() => {
+                  setOptionsOpen(false);
+                  void openAccess();
+                }}
+              >
+                <Users size={14} />
+                Gerenciar acesso
+              </MenuItem>
+            </MenuPanel>
+          )}
+        </div>
+      </div>
+
+      {detailsOpen && (
+        <Modal
+          title={number.name}
+          description="Dados do canal conectado"
+          onClose={() => setDetailsOpen(false)}
+        >
+          <div className="details-list">
+            <span>
+              <small>Telefone</small>
+              <b>{number.phoneNumber}</b>
+            </span>
+
+            <span>
+              <small>Status</small>
+              <b>
+                {number.status === 'connected'
+                  ? 'Conectado'
+                  : 'Desconectado'}
+              </b>
+            </span>
+
+            <span>
+              <small>Pessoas com acesso</small>
+              <b>{number.teamCount}</b>
+            </span>
+          </div>
+        </Modal>
+      )}
+
+      {accessOpen && (
+        <Modal
+          title={`Acesso — ${number.name}`}
+          description="Escolha quais pessoas da equipe podem atender este número."
+          onClose={() => {
+            if (!accessSaving) {
+              setAccessOpen(false);
+            }
+          }}
+        >
+          <div className="modal-form">
+            {accessLoading ? (
+              <LoadingRows count={4} />
+            ) : accessUsers.length === 0 ? (
+              <EmptyState
+                title="Nenhuma pessoa cadastrada"
+                message="Adicione alguém na página Equipe antes de conceder acesso."
+              />
+            ) : (
+              <>
+                <div className="checkbox-group">
+                  {accessUsers.map((user) => (
+                    <label
+                      key={user.id}
+                      className="checkbox-option"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 0',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.includes(user.id)}
+                        onChange={() => toggleUser(user.id)}
+                      />
+
+                      <Avatar
+                        name={user.name}
+                        initials={user.initials}
+                        online={user.online}
+                        size="sm"
+                      />
+
+                      <span
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 2,
+                        }}
+                      >
+                        <b>{user.name}</b>
+                        <small>{user.email}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                {accessError && (
+                  <div className="form-error">
+                    {accessError}
+                  </div>
+                )}
+
+                <div className="modal-actions">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={accessSaving}
+                    onClick={() => setAccessOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+
+                  <Button
+                    type="button"
+                    disabled={accessSaving}
+                    onClick={() => void saveAccess()}
+                  >
+                    {accessSaving
+                      ? 'Salvando...'
+                      : 'Salvar acessos'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
+    </article>
+  );
 }
 
 function TeamPage() {
