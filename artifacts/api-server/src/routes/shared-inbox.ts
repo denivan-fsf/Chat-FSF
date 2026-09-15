@@ -166,7 +166,6 @@ router.get('/whatsapp-numbers', requireAuth(async (_:any,res:any)=>{
     from public.whatsapp_numbers n
     order by n.created_at
   `);
-
   res.json(q.rows.map((r:any)=>({
     id:r.id,
     name:r.name,
@@ -175,6 +174,111 @@ router.get('/whatsapp-numbers', requireAuth(async (_:any,res:any)=>{
     unreadCount:Number(r.unread_count),
     teamCount:Number(r.team_count),
   })));
+}));
+router.get('/whatsapp-numbers/:id/access', requireAuth(async (req:any,res:any)=>{
+  const numberId=req.params.id;
+
+  const number=await pool.query(
+    'select id,name,phone_number from public.whatsapp_numbers where id=$1',
+    [numberId],
+  );
+
+  if(!number.rows[0]){
+    return res.status(404).json({error:'Número não encontrado'});
+  }
+
+  const users=await pool.query(`
+    select
+      u.id,
+      u.name,
+      u.email,
+      u.role,
+      u.online,
+      exists(
+        select 1
+        from public.workspace_user_numbers w
+        where w.user_id=u.id
+          and w.whatsapp_number_id=$1
+      ) as has_access
+    from public.workspace_users u
+    order by u.name
+  `,[numberId]);
+
+  return res.json({
+    number:{
+      id:number.rows[0].id,
+      name:number.rows[0].name,
+      phoneNumber:number.rows[0].phone_number,
+    },
+    users:users.rows.map((u:any)=>({
+      id:u.id,
+      name:u.name,
+      email:u.email,
+      role:normalizeRole(u.role),
+      online:Boolean(u.online),
+      hasAccess:Boolean(u.has_access),
+      initials:initials(u.name),
+    })),
+  });
+}));
+router.put('/whatsapp-numbers/:id/access', requireAuth(async (req:any,res:any)=>{
+  const numberId=req.params.id;
+  const userIds=Array.isArray(req.body?.userIds)
+    ? req.body.userIds.filter((id:any)=>typeof id==='string' && id)
+    : [];
+
+  const number=await pool.query(
+    'select id from public.whatsapp_numbers where id=$1',
+    [numberId],
+  );
+
+  if(!number.rows[0]){
+    return res.status(404).json({error:'Número não encontrado'});
+  }
+
+  const validUsers=await pool.query(
+    'select id from public.workspace_users where id = any($1::uuid[])',
+    [userIds],
+  );
+
+  const allowedUserIds=validUsers.rows.map((row:any)=>row.id);
+
+  const client=await pool.connect();
+
+  try{
+    await client.query('begin');
+
+    await client.query(
+      'delete from public.workspace_user_numbers where whatsapp_number_id=$1',
+      [numberId],
+    );
+
+    for(const userId of allowedUserIds){
+      await client.query(
+        `insert into public.workspace_user_numbers
+          (user_id,whatsapp_number_id)
+         values($1,$2)
+         on conflict do nothing`,
+        [userId,numberId],
+      );
+    }
+
+    await client.query('commit');
+
+    return res.json({
+      ok:true,
+      teamCount:allowedUserIds.length,
+      userIds:allowedUserIds,
+    });
+  }catch(error){
+    await client.query('rollback');
+    console.error('Erro ao atualizar acesso do número',error);
+    return res.status(500).json({
+      error:'Não foi possível atualizar o acesso do número.',
+    });
+  }finally{
+    client.release();
+  }
 }));
 router.post('/whatsapp-numbers', requireAuth(async (req:any,res:any)=>{
   const {name,phoneNumber,phoneNumberId,uzapiUsername}=req.body||{};
