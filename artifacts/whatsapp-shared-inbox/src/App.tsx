@@ -859,7 +859,191 @@ function TeamPage() {
 
 function UserRow({ user, numbers }: { user: User; numbers: WhatsappNumber[] }) {
   const [open, setOpen] = useState(false);
-  return <tr data-testid={`row-user-${user.id}`}><td><div className="table-user"><Avatar name={user.name} initials={user.initials} online={user.online} /><span><b>{user.name}</b><small>{user.email}</small></span></div></td><td><span className={`role-badge role-${user.role}`}>{user.role === 'super_admin' ? 'Administrador' : user.role === 'manager' ? 'Gestor' : 'Atendente'}</span></td><td><span className={`presence-text ${user.online ? 'online' : ''}`}><span />{user.online ? 'Disponível' : 'Ausente'}</span></td><td><div className="access-stack">{numbers.slice(0, user.role === 'agent' ? 1 : 3).map((number, index) => <span title={number.name} key={number.id} style={{ zIndex: 3 - index }}><Phone size={11} /></span>)}<small>{user.role === 'agent' ? '1 número' : `${numbers.length} números`}</small></div></td><td><div className="relative-anchor"><button className="icon-btn" onClick={() => setOpen((value) => !value)} aria-label={`Abrir ações de ${user.name}`} aria-expanded={open} data-testid={`button-user-actions-${user.id}`}><MoreHorizontal size={17} /></button>{open && <MenuPanel className="user-menu"><MenuItem onClick={() => { void navigator.clipboard?.writeText(user.email); setOpen(false); }}><Copy size={14} /> Copiar e-mail</MenuItem><MenuItem onClick={() => { setOpen(false); window.alert(`${user.name}\n${user.email}\n${user.role === 'agent' ? 'Atendente' : 'Gestor'}`); }}><UserRound size={14} /> Ver informações</MenuItem></MenuPanel>}</div></td></tr>;
+  const [deleting, setDeleting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const canDelete =
+    user.role !== 'super_admin';
+
+  const deleteUser = async () => {
+    if (!canDelete || deleting) return;
+
+    const confirmed = window.confirm(
+      `Excluir ${user.name} da equipe?\n\n` +
+      `O acesso dessa pessoa será removido, as conversas atribuídas serão liberadas e a conta será excluída.`
+    );
+
+    if (!confirmed) return;
+
+    setDeleting(true);
+
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('fsf_access_token');
+
+      const response = await fetch(
+        `${baseUrl}/api/users/${encodeURIComponent(user.id)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            ...(token
+              ? { Authorization: `Bearer ${token}` }
+              : {}),
+          },
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || 'Não foi possível excluir o atendente.',
+        );
+      }
+
+      setOpen(false);
+
+      await queryClient.invalidateQueries({
+        queryKey: getListUsersQueryKey(),
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: getListWhatsappNumbersQueryKey(),
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: getListConversationsQueryKey(),
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: getGetDashboardSummaryQueryKey(),
+      });
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível excluir o atendente.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <tr data-testid={`row-user-${user.id}`}>
+      <td>
+        <div className="table-user">
+          <Avatar
+            name={user.name}
+            initials={user.initials}
+            online={user.online}
+          />
+
+          <span>
+            <b>{user.name}</b>
+            <small>{user.email}</small>
+          </span>
+        </div>
+      </td>
+
+      <td>
+        <span className={`role-badge role-${user.role}`}>
+          {user.role === 'super_admin'
+            ? 'Administrador'
+            : user.role === 'manager'
+              ? 'Gestor'
+              : 'Atendente'}
+        </span>
+      </td>
+
+      <td>
+        <span
+          className={`presence-text ${user.online ? 'online' : ''}`}
+        >
+          <span />
+          {user.online ? 'Disponível' : 'Ausente'}
+        </span>
+      </td>
+
+      <td>
+        <div className="access-stack">
+          {numbers
+            .slice(0, user.role === 'agent' ? 1 : 3)
+            .map((number, index) => (
+              <span
+                title={number.name}
+                key={number.id}
+                style={{ zIndex: 3 - index }}
+              >
+                <Phone size={11} />
+              </span>
+            ))}
+
+          <small>
+            {user.role === 'agent'
+              ? '1 número'
+              : `${numbers.length} números`}
+          </small>
+        </div>
+      </td>
+
+      <td>
+        <div className="relative-anchor">
+          <button
+            className="icon-btn"
+            onClick={() => setOpen((value) => !value)}
+            aria-label={`Abrir ações de ${user.name}`}
+            aria-expanded={open}
+            data-testid={`button-user-actions-${user.id}`}
+          >
+            <MoreHorizontal size={17} />
+          </button>
+
+          {open && (
+            <MenuPanel className="user-menu">
+              <MenuItem
+                onClick={() => {
+                  void navigator.clipboard?.writeText(user.email);
+                  setOpen(false);
+                }}
+              >
+                <Copy size={14} />
+                Copiar e-mail
+              </MenuItem>
+
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  window.alert(
+                    `${user.name}\n${user.email}\n${
+                      user.role === 'agent'
+                        ? 'Atendente'
+                        : user.role === 'manager'
+                          ? 'Gestor'
+                          : 'Administrador'
+                    }`,
+                  );
+                }}
+              >
+                <UserRound size={14} />
+                Ver informações
+              </MenuItem>
+
+              {canDelete && (
+                <MenuItem
+                  danger
+                  onClick={() => void deleteUser()}
+                >
+                  <X size={14} />
+                  {deleting ? 'Excluindo...' : 'Excluir atendente'}
+                </MenuItem>
+              )}
+            </MenuPanel>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
 }
 
 function NewUserModal({ numbers, pending, onClose, onSubmit }: {
