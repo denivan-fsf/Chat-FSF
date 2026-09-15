@@ -296,8 +296,37 @@ function ConversationView({ id, session, users }: { id: string; session: Session
   };
   const setStatus = (next: ConversationStatus) => { if (!id) return; updateConversation.mutate({ id, data: { status: next } }, { onSuccess: (data) => { queryClient.setQueryData(getGetConversationQueryKey(id), data); queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey() }); } }); };
   const assign = (userId: string) => { updateConversation.mutate({ id, data: { assignedUserId: userId || null } }, { onSuccess: (data) => { queryClient.setQueryData(getGetConversationQueryKey(id), data); queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey() }); } }); };
-  useEffect(() => { setLock(null); setOptimistic([]); }, [id]);
-  if (!id) return <section className="message-panel panel empty-conversation"><EmptyState title="Escolha uma conversa" message="As mensagens e os detalhes aparecem aqui." /></section>;
+  useEffect(() => {
+    setLock(null);
+    setOptimistic([]);
+  
+    if (!id) return;
+  
+    updateConversation.mutate(
+      {
+        id,
+        data: {
+          markRead: true,
+        } as any,
+      },
+      {
+        onSuccess: (data) => {
+          queryClient.setQueryData(
+            getGetConversationQueryKey(id),
+            data,
+          );
+  
+          void queryClient.invalidateQueries({
+            queryKey: getListConversationsQueryKey(),
+          });
+  
+          void queryClient.invalidateQueries({
+            queryKey: getGetDashboardSummaryQueryKey(),
+          });
+        },
+      },
+    );
+}, [id]);  if (!id) return <section className="message-panel panel empty-conversation"><EmptyState title="Escolha uma conversa" message="As mensagens e os detalhes aparecem aqui." /></section>;
   if (detailQuery.isLoading) return <section className="message-panel panel"><LoadingRows count={7} /></section>;
   if (detailQuery.isError) return <section className="message-panel panel"><ErrorState onRetry={() => detailQuery.refetch()} /></section>;
   const currentStatus = conversation?.status ?? 'open';
