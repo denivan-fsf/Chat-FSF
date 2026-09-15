@@ -162,8 +162,43 @@ const convSql=`select c.*,ct.name contact_name,ct.phone_number contact_phone,ct.
 const mapConv=(r:any)=>({id:r.id,contact:{id:r.contact_id,name:r.contact_name,phoneNumber:r.contact_phone,profilePic:r.profile_pic,initials:initials(r.contact_name)},whatsappNumber:{id:r.whatsapp_number_id,name:r.number_name,phoneNumber:r.number_phone,status:r.number_status,unreadCount:0,teamCount:0},assignedUser:r.user_id?{id:r.user_id,name:r.user_name,email:r.user_email,role:normalizeRole(r.user_role),initials:initials(r.user_name),online:false}:null,status:r.status,lastMessagePreview:r.last_message_preview,lastMessageAt:r.last_message_at,unreadCount:r.unread_count,tags:r.tags||[],activeViewer:null,activeViewerName:null});
 router.get('/conversations', requireAuth(async (req:any,res:any)=>{const args:any[]=[];let where='';if(req.query.numberId){args.push(req.query.numberId);where+=` and c.whatsapp_number_id=$${args.length}`;}if(req.query.status){args.push(req.query.status);where+=` and c.status=$${args.length}`;}if(req.query.search){args.push(`%${req.query.search}%`);where+=` and (ct.name ilike $${args.length} or ct.phone_number ilike $${args.length})`;}const q=await pool.query(convSql+' where true'+where+' order by c.last_message_at desc',args);res.json(q.rows.map(mapConv));}));
 router.get('/conversations/:id', requireAuth(async (req:any,res:any)=>{const q=await pool.query(convSql+' where c.id=$1',[req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Conversa não encontrada'});const m=await pool.query('select * from public.messages where conversation_id=$1 order by created_at',[req.params.id]);res.json({...mapConv(q.rows[0]),messages:m.rows.map((x:any)=>({id:x.id,conversationId:x.conversation_id,direction:x.direction,content:x.content,mediaUrl:x.media_url,mediaType:x.media_type,sentByUser:null,status:x.status,createdAt:x.created_at}))});}));
-router.patch('/conversations/:id', requireAuth(async (req:any,res:any)=>{const {status,assignedUserId,tags}=req.body||{};const q=await pool.query('update public.conversations set status=coalesce($2,status),assigned_user_id=coalesce($3,assigned_user_id),tags=coalesce($4,tags),updated_at=now() where id=$1 returning id',[req.params.id,status,assignedUserId,tags?JSON.stringify(tags):null]);if(!q.rows[0])return res.status(404).json({error:'Conversa não encontrada'});const row=await pool.query(convSql+' where c.id=$1',[req.params.id]);broadcastRealtime({type:'conversation.updated',id:req.params.id});res.json(mapConv(row.rows[0]));}));
-router.post('/conversations/:id/lock', requireAuth(async (req:any,res:any)=>{const expires=new Date(Date.now()+120000);await pool.query(`insert into public.conversation_locks(conversation_id,locked_by,expires_at) values($1,$2,$3) on conflict(conversation_id) do update set locked_by=excluded.locked_by,expires_at=excluded.expires_at where public.conversation_locks.expires_at < now() or public.conversation_locks.locked_by=excluded.locked_by`,[req.params.id,req.currentUser.id,expires]);res.json({conversationId:req.params.id,lockedBy:req.currentUser,expiresAt:expires.toISOString()});}));
+router.patch('/conversations/:id', requireAuth(async (req:any,res:any)=>{
+  const {status,assignedUserId,tags,markRead}=req.body||{};
+
+  const q=await pool.query(
+    `update public.conversations
+     set
+       status=coalesce($2,status),
+       assigned_user_id=coalesce($3,assigned_user_id),
+       tags=coalesce($4,tags),
+       unread_count=case when $5=true then 0 else unread_count end,
+       updated_at=now()
+     where id=$1
+     returning id`,
+    [
+      req.params.id,
+      status ?? null,
+      assignedUserId ?? null,
+      tags ? JSON.stringify(tags) : null,
+      markRead === true,
+    ],
+  );
+
+  if(!q.rows[0])
+    return res.status(404).json({error:'Conversa não encontrada'});
+
+  const row=await pool.query(
+    convSql+' where c.id=$1',
+    [req.params.id],
+  );
+
+  broadcastRealtime({
+    type:'conversation.updated',
+    id:req.params.id,
+  });
+
+  res.json(mapConv(row.rows[0]));
+}));router.post('/conversations/:id/lock', requireAuth(async (req:any,res:any)=>{const expires=new Date(Date.now()+120000);await pool.query(`insert into public.conversation_locks(conversation_id,locked_by,expires_at) values($1,$2,$3) on conflict(conversation_id) do update set locked_by=excluded.locked_by,expires_at=excluded.expires_at where public.conversation_locks.expires_at < now() or public.conversation_locks.locked_by=excluded.locked_by`,[req.params.id,req.currentUser.id,expires]);res.json({conversationId:req.params.id,lockedBy:req.currentUser,expiresAt:expires.toISOString()});}));
 router.get('/conversations/:id/messages', requireAuth(async (req:any,res:any)=>{const q=await pool.query('select * from public.messages where conversation_id=$1 order by created_at',[req.params.id]);res.json(q.rows.map((x:any)=>({id:x.id,conversationId:x.conversation_id,direction:x.direction,content:x.content,mediaUrl:x.media_url,mediaType:x.media_type,sentByUser:null,status:x.status,createdAt:x.created_at})));}));
 router.post('/conversations/:id/messages', requireAuth(async (req:any,res:any)=>{
   const {content,mediaUrl,mediaType}=req.body||{};
