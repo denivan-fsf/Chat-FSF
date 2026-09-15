@@ -149,6 +149,104 @@ router.post('/users', requireAuth(async (req:any,res:any)=>{
     return res.status(500).json({error:'Conta criada no Auth, mas não foi possível concluir o cadastro do atendente.'});
   }
 }));
+
+router.delete('/users/:id', requireAuth(async (req:any,res:any)=>{
+  const userId=req.params.id;
+
+  if(userId===req.currentUser.id){
+    return res.status(400).json({
+      error:'Você não pode excluir a própria conta.',
+    });
+  }
+
+  const target=await pool.query(
+    'select id,name,email,role from public.workspace_users where id=$1 limit 1',
+    [userId],
+  );
+
+  if(!target.rows[0]){
+    return res.status(404).json({
+      error:'Usuário não encontrado.',
+    });
+  }
+
+  const targetUser=target.rows[0];
+
+  if(targetUser.role==='super_admin'){
+    return res.status(403).json({
+      error:'A conta de administrador não pode ser excluída por esta tela.',
+    });
+  }
+
+  const client=await pool.connect();
+
+  try{
+    await client.query('begin');
+
+    // Remove bloqueios de conversas criados pelo usuário.
+    await client.query(
+      'delete from public.conversation_locks where locked_by=$1',
+      [userId],
+    );
+
+    // Libera conversas que estavam atribuídas ao usuário.
+    await client.query(
+      'update public.conversations set assigned_user_id=null, updated_at=now() where assigned_user_id=$1',
+      [userId],
+    );
+
+    // Remove os acessos do usuário aos números.
+    await client.query(
+      'delete from public.workspace_user_numbers where user_id=$1',
+      [userId],
+    );
+
+    // Remove o usuário do workspace.
+    await client.query(
+      'delete from public.workspace_users where id=$1',
+      [userId],
+    );
+
+    await client.query('commit');
+
+    // Remove também a conta do Supabase Auth.
+    if(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY){
+      await fetch(
+        `${process.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+        {
+          method:'DELETE',
+          headers:{
+            apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,
+            Authorization:`Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        },
+      ).catch((error)=>{
+        console.error('Usuário removido do workspace, mas não foi possível remover o Auth:',error);
+      });
+    }
+
+    broadcastRealtime({
+      type:'user.deleted',
+      id:userId,
+    });
+
+    return res.json({
+      ok:true,
+      id:userId,
+      name:targetUser.name,
+    });
+  }catch(error){
+    await client.query('rollback');
+    console.error('Erro ao excluir usuário',error);
+
+    return res.status(500).json({
+      error:'Não foi possível excluir o atendente.',
+    });
+  }finally{
+    client.release();
+  }
+}));
+
 router.get('/whatsapp-numbers', requireAuth(async (_:any,res:any)=>{
   const q=await pool.query(`
     select
