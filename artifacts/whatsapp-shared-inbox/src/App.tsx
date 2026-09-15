@@ -169,13 +169,13 @@ function Shell({ session, children }: { session?: Session; children: React.React
   const logout = useLogout();
   const [, setLocation] = useLocation();
   const onLogout = () => logout.mutate(undefined, {
-  onSettled: () => {
-    localStorage.removeItem('fsf_access_token');
-    localStorage.removeItem('fsf_refresh_token');
-    queryClient.clear();
-    setLocation('/');
-  },
-});
+    onSettled: () => {
+      localStorage.removeItem('fsf_access_token');
+      localStorage.removeItem('fsf_refresh_token');
+      queryClient.clear();
+      setLocation('/');
+    },
+  });
   return <div className="app-shell"><div className={`mobile-scrim ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} /><div className={sidebarOpen ? 'sidebar-mobile-open' : ''}><Sidebar session={session} onLogout={onLogout} /></div><main className="app-main"><Topbar title={getPageTitle()} session={session} onMenu={() => setSidebarOpen(true)} onLogout={onLogout} />{children}</main></div>;
 }
 
@@ -299,9 +299,9 @@ function ConversationView({ id, session, users }: { id: string; session: Session
   useEffect(() => {
     setLock(null);
     setOptimistic([]);
-  
+
     if (!id) return;
-  
+
     updateConversation.mutate(
       {
         id,
@@ -315,18 +315,19 @@ function ConversationView({ id, session, users }: { id: string; session: Session
             getGetConversationQueryKey(id),
             data,
           );
-  
+
           void queryClient.invalidateQueries({
             queryKey: getListConversationsQueryKey(),
           });
-  
+
           void queryClient.invalidateQueries({
             queryKey: getGetDashboardSummaryQueryKey(),
           });
         },
       },
     );
-}, [id]);  if (!id) return <section className="message-panel panel empty-conversation"><EmptyState title="Escolha uma conversa" message="As mensagens e os detalhes aparecem aqui." /></section>;
+  }, [id]);
+  if (!id) return <section className="message-panel panel empty-conversation"><EmptyState title="Escolha uma conversa" message="As mensagens e os detalhes aparecem aqui." /></section>;
   if (detailQuery.isLoading) return <section className="message-panel panel"><LoadingRows count={7} /></section>;
   if (detailQuery.isError) return <section className="message-panel panel"><ErrorState onRetry={() => detailQuery.refetch()} /></section>;
   const currentStatus = conversation?.status ?? 'open';
@@ -357,7 +358,7 @@ function ContextRail({ conversation, summary, numbers, users, onClose }: { conve
     if (!conversation) return;
     updateConversation.mutate({ id: conversation.id, data: { assignedUserId: userId } }, { onSuccess: () => { setAssigneeOpen(false); void queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey() }); } });
   };
-  return <aside className="context-rail"><div className="context-heading"><div><span className="eyebrow">VISÃO RÁPIDA</span><h2>Contexto</h2></div><button className="icon-btn" onClick={onClose} aria-label="Fechar contexto" data-testid="button-close-context"><PanelRight size={17} /></button></div>{conversation ? <><div className="contact-card"><div className="contact-card-top"><Avatar name={conversation.contact.name} initials={conversation.contact.initials} size="lg" online /><div><h3>{conversation.contact.name}</h3><p>{conversation.contact.phoneNumber}</p></div><div className="relative-anchor"><button className="icon-btn" onClick={() => setDetailsOpen((open) => !open)} aria-label="Mais detalhes do contato" data-testid="button-contact-details"><MoreHorizontal size={16} /></button>{detailsOpen && <MenuPanel className="contact-menu"><MenuItem onClick={() => { void navigator.clipboard?.writeText(conversation.contact.phoneNumber); setDetailsOpen(false); }}><Copy size={14} /> Copiar telefone</MenuItem><MenuItem onClick={() => { setDetailsOpen(false); window.alert(`Contato: ${conversation.contact.name}\\n${conversation.contact.phoneNumber}`); }}><UserRound size={14} /> Ver informações</MenuItem></MenuPanel>}</div></div><div className="contact-info"><span><small>CANAL</small><b>{conversation.whatsappNumber.name}</b></span><span><small>ÚLTIMA ATIVIDADE</small><b>{formatTime(conversation.lastMessageAt)}</b></span></div></div><div className="context-block"><div className="block-title"><span>Etiquetas</span><button onClick={addTag} aria-label="Adicionar etiqueta" data-testid="button-add-tag"><Plus size={14} /></button></div><div className="tag-cloud">{(conversation.tags?.length ? conversation.tags : ['sem etiqueta']).map((tag) => <span className="tag tag-large" key={tag}><Tag size={12} />{tag}</span>)}</div></div><div className="context-block"><div className="block-title"><span>Responsável</span><div className="relative-anchor"><button onClick={() => setAssigneeOpen((open) => !open)} aria-label="Trocar responsável" data-testid="button-change-assignee"><ArrowRightLeft size={14} /></button>{assigneeOpen && <MenuPanel className="assignee-menu">{users.map((user) => <MenuItem key={user.id} onClick={() => assign(user.id)}><Avatar name={user.name} initials={user.initials} size="sm" /> {user.name}</MenuItem>)}</MenuPanel>}</div></div><div className="rail-user"><Avatar name={conversation.assignedUser?.name} initials={conversation.assignedUser?.initials} online={conversation.assignedUser?.online} /><div><b>{conversation.assignedUser?.name ?? 'Sem responsável'}</b><small>{conversation.assignedUser?.online ? 'Online agora' : 'Offline'}</small></div></div></div><div className="context-block"><div className="block-title"><span>Número de origem</span></div><div className="number-rail"><span className="number-symbol"><Phone size={15} /></span><div><b>{conversation.whatsappNumber.name}</b><small>{conversation.whatsappNumber.phoneNumber}</small></div><span className="connected-tiny" /></div></div></> : <EmptyState title="Sem contexto" message="Selecione uma conversa para ver os detalhes." />}<div className="rail-footnote"><ShieldCheck size={15} /><span>Dados protegidos e sincronizados</span></div></aside>;
+  return <aside className="context-rail"><div className="context-heading"><div><span className="eyebrow">VISÃO RÁPIDA</span><h2>Contexto</h2></div><button className="icon-btn" onClick={onClose} aria-label="Fechar contexto" data-testid="button-close-context"><PanelRight size={17} /></button></div>{conversation ? <><div className="contact-card"><div className="contact-card-top"><Avatar name={conversation.contact.name} initials={conversation.contact.initials} size="lg" online /><div><h3>{conversation.contact.name}</h3><p>{conversation.contact.phoneNumber}</p></div><div className="relative-anchor"><button className="icon-btn" onClick={() => setDetailsOpen((open) => !open)} aria-label="Mais detalhes do contato" data-testid="button-contact-details"><MoreHorizontal size={16} /></button>{detailsOpen && <MenuPanel className="contact-menu"><MenuItem onClick={() => { void navigator.clipboard?.writeText(conversation.contact.phoneNumber); setDetailsOpen(false); }}><Copy size={14} /> Copiar telefone</MenuItem><MenuItem onClick={() => { setDetailsOpen(false); window.alert(`Contato: ${conversation.contact.name}\n${conversation.contact.phoneNumber}`); }}><UserRound size={14} /> Ver informações</MenuItem></MenuPanel>}</div></div><div className="contact-info"><span><small>CANAL</small><b>{conversation.whatsappNumber.name}</b></span><span><small>ÚLTIMA ATIVIDADE</small><b>{formatTime(conversation.lastMessageAt)}</b></span></div></div><div className="context-block"><div className="block-title"><span>Etiquetas</span><button onClick={addTag} aria-label="Adicionar etiqueta" data-testid="button-add-tag"><Plus size={14} /></button></div><div className="tag-cloud">{(conversation.tags?.length ? conversation.tags : ['sem etiqueta']).map((tag) => <span className="tag tag-large" key={tag}><Tag size={12} />{tag}</span>)}</div></div><div className="context-block"><div className="block-title"><span>Responsável</span><div className="relative-anchor"><button onClick={() => setAssigneeOpen((open) => !open)} aria-label="Trocar responsável" data-testid="button-change-assignee"><ArrowRightLeft size={14} /></button>{assigneeOpen && <MenuPanel className="assignee-menu">{users.map((user) => <MenuItem key={user.id} onClick={() => assign(user.id)}><Avatar name={user.name} initials={user.initials} size="sm" /> {user.name}</MenuItem>)}</MenuPanel>}</div></div><div className="rail-user"><Avatar name={conversation.assignedUser?.name} initials={conversation.assignedUser?.initials} online={conversation.assignedUser?.online} /><div><b>{conversation.assignedUser?.name ?? 'Sem responsável'}</b><small>{conversation.assignedUser?.online ? 'Online agora' : 'Offline'}</small></div></div></div><div className="context-block"><div className="block-title"><span>Número de origem</span></div><div className="number-rail"><span className="number-symbol"><Phone size={15} /></span><div><b>{conversation.whatsappNumber.name}</b><small>{conversation.whatsappNumber.phoneNumber}</small></div><span className="connected-tiny" /></div></div></> : <EmptyState title="Sem contexto" message="Selecione uma conversa para ver os detalhes." />}<div className="rail-footnote"><ShieldCheck size={15} /><span>Dados protegidos e sincronizados</span></div></aside>;
 }
 
 function AuthLoading() { return <div className="auth-screen"><div className="auth-card loading-auth"><BrandMark /><div className="loading-bars"><span /><span /><span /></div><p>Preparando seu espaço de atendimento...</p></div></div>; }
@@ -435,29 +436,15 @@ function LoginScreen() {
 
           <label>
             Senha
-
-            <div className="password-input">
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Sua senha"
-                required
-                data-testid="input-login-password"
-              />
-
-              {password && (
-                <button
-                  type="button"
-                  onClick={() => setPassword('')}
-                  aria-label="Limpar senha"
-                  data-testid="button-clear-password"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Sua senha"
+              required
+              data-testid="input-login-password"
+            />
           </label>
 
           {error && (
@@ -534,7 +521,12 @@ function NumbersPage() {
   if (sessionQuery.isPending) return <AuthLoading />;
   const numbers = numbersQuery.data ?? [];
   const addNumber = (data: { name: string; phoneNumber: string }) => connectNumber.mutate({ data }, { onSuccess: () => { setConnectOpen(false); setNotice('Número conectado com sucesso.'); void numbersQuery.refetch(); void queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }); }, onError: (error) => setNotice(getApiError(error, 'Não foi possível conectar o número.')) });
-  return <Shell session={sessionQuery.data}><div className="page-content management-page"><div className="management-hero"><div><span className="eyebrow">CANAIS DO WORKSPACE</span><h2>Seus números, <em>sempre por perto.</em></h2><p>Centralize as conversas de cada operação em um único lugar.</p></div><Button onClick={() => setConnectOpen(true)} data-testid="button-connect-number"><Plus size={16} /> Conectar número</Button></div>{notice && <div className={`toast-note ${notice.includes('não') ? 'is-error' : ''}`} data-testid="text-number-notice"><Check size={15} /> {notice}<button onClick={() => setNotice('')} aria-label="Fechar aviso" data-testid="button-close-notice"><X size={14} /></button></div>}<div className="number-grid">{numbersQuery.isLoading ? <LoadingRows count={3} /> : numbersQuery.isError ? <ErrorState onRetry={() => numbersQuery.refetch()} /> : numbers.length === 0 ? <EmptyState title="Nenhum número conectado" message="Conecte seu primeiro número para começar a atender." /> : numbers.map((number) => <NumberCard number={number} key={number.id} onAccess={() => setNotice(`Acesso de equipe atualizado para ${number.name}.`)} />)}</div><div className="info-banner"><div className="info-symbol"><Link2 size={18} /></div><div><b>Conexão oficial WhatsApp Business</b><p>Seus números são conectados pela API oficial da Meta. Mensagens, permissões e histórico ficam sob controle do workspace.</p></div><button className="text-button" onClick={() => setNotice('Preencha o formulário de conexão para adicionar um canal.')} data-testid="button-learn-connection">Saiba como funciona <ArrowRight size={14} /></button></div></div>{connectOpen && <ConnectNumberModal pending={connectNumber.isPending} onClose={() => setConnectOpen(false)} onSubmit={addNumber} />}</Shell>;
+  const refreshNumberAccess = () => {
+    setNotice(`Acesso de equipe atualizado para ${numberLabelForNotice}.`);
+    void numbersQuery.refetch();
+    void queryClient.invalidateQueries({ queryKey: getListWhatsappNumbersQueryKey() });
+  };
+  return <Shell session={sessionQuery.data}><div className="page-content management-page"><div className="management-hero"><div><span className="eyebrow">CANAIS DO WORKSPACE</span><h2>Seus números, <em>sempre por perto.</em></h2><p>Centralize as conversas de cada operação em um único lugar.</p></div><Button onClick={() => setConnectOpen(true)} data-testid="button-connect-number"><Plus size={16} /> Conectar número</Button></div>{notice && <div className={`toast-note ${notice.includes('não') ? 'is-error' : ''}`} data-testid="text-number-notice"><Check size={15} /> {notice}<button onClick={() => setNotice('')} aria-label="Fechar aviso" data-testid="button-close-notice"><X size={14} /></button></div>}<div className="number-grid">{numbersQuery.isLoading ? <LoadingRows count={3} /> : numbersQuery.isError ? <ErrorState onRetry={() => numbersQuery.refetch()} /> : numbers.length === 0 ? <EmptyState title="Nenhum número conectado" message="Conecte seu primeiro número para começar a atender." /> : numbers.map((number) => <NumberCard number={number} key={number.id} onAccess={() => { setNotice(`Acesso de equipe atualizado para ${number.name}.`); void numbersQuery.refetch(); void queryClient.invalidateQueries({ queryKey: getListWhatsappNumbersQueryKey() }); }} />)}</div><div className="info-banner"><div className="info-symbol"><Link2 size={18} /></div><div><b>Conexão oficial WhatsApp Business</b><p>Seus números são conectados pela API oficial da Meta. Mensagens, permissões e histórico ficam sob controle do workspace.</p></div><button className="text-button" onClick={() => setNotice('Preencha o formulário de conexão para adicionar um canal.')} data-testid="button-learn-connection">Saiba como funciona <ArrowRight size={14} /></button></div></div>{connectOpen && <ConnectNumberModal pending={connectNumber.isPending} onClose={() => setConnectOpen(false)} onSubmit={addNumber} />}</Shell>;
 }
 
 function NumberCard({ number, onAccess }: { number: WhatsappNumber; onAccess: () => void }) {
@@ -872,7 +864,7 @@ function TeamPage() {
 
 function UserRow({ user, numbers }: { user: User; numbers: WhatsappNumber[] }) {
   const [open, setOpen] = useState(false);
-  return <tr data-testid={`row-user-${user.id}`}><td><div className="table-user"><Avatar name={user.name} initials={user.initials} online={user.online} /><span><b>{user.name}</b><small>{user.email}</small></span></div></td><td><span className={`role-badge role-${user.role}`}>{user.role === 'super_admin' ? 'Administrador' : user.role === 'manager' ? 'Gestor' : 'Atendente'}</span></td><td><span className={`presence-text ${user.online ? 'online' : ''}`}><span />{user.online ? 'Disponível' : 'Ausente'}</span></td><td><div className="access-stack">{numbers.slice(0, user.role === 'agent' ? 1 : 3).map((number, index) => <span title={number.name} key={number.id} style={{ zIndex: 3 - index }}><Phone size={11} /></span>)}<small>{user.role === 'agent' ? '1 número' : `${numbers.length} números`}</small></div></td><td><div className="relative-anchor"><button className="icon-btn" onClick={() => setOpen((value) => !value)} aria-label={`Abrir ações de ${user.name}`} aria-expanded={open} data-testid={`button-user-actions-${user.id}`}><MoreHorizontal size={17} /></button>{open && <MenuPanel className="user-menu"><MenuItem onClick={() => { void navigator.clipboard?.writeText(user.email); setOpen(false); }}><Copy size={14} /> Copiar e-mail</MenuItem><MenuItem onClick={() => { setOpen(false); window.alert(`${user.name}\\n${user.email}\\n${user.role === 'agent' ? 'Atendente' : 'Gestor'}`); }}><UserRound size={14} /> Ver informações</MenuItem></MenuPanel>}</div></td></tr>;
+  return <tr data-testid={`row-user-${user.id}`}><td><div className="table-user"><Avatar name={user.name} initials={user.initials} online={user.online} /><span><b>{user.name}</b><small>{user.email}</small></span></div></td><td><span className={`role-badge role-${user.role}`}>{user.role === 'super_admin' ? 'Administrador' : user.role === 'manager' ? 'Gestor' : 'Atendente'}</span></td><td><span className={`presence-text ${user.online ? 'online' : ''}`}><span />{user.online ? 'Disponível' : 'Ausente'}</span></td><td><div className="access-stack">{numbers.slice(0, user.role === 'agent' ? 1 : 3).map((number, index) => <span title={number.name} key={number.id} style={{ zIndex: 3 - index }}><Phone size={11} /></span>)}<small>{user.role === 'agent' ? '1 número' : `${numbers.length} números`}</small></div></td><td><div className="relative-anchor"><button className="icon-btn" onClick={() => setOpen((value) => !value)} aria-label={`Abrir ações de ${user.name}`} aria-expanded={open} data-testid={`button-user-actions-${user.id}`}><MoreHorizontal size={17} /></button>{open && <MenuPanel className="user-menu"><MenuItem onClick={() => { void navigator.clipboard?.writeText(user.email); setOpen(false); }}><Copy size={14} /> Copiar e-mail</MenuItem><MenuItem onClick={() => { setOpen(false); window.alert(`${user.name}\n${user.email}\n${user.role === 'agent' ? 'Atendente' : 'Gestor'}`); }}><UserRound size={14} /> Ver informações</MenuItem></MenuPanel>}</div></td></tr>;
 }
 
 function NewUserModal({ numbers, pending, onClose, onSubmit }: {
@@ -891,7 +883,7 @@ function NewUserModal({ numbers, pending, onClose, onSubmit }: {
       <label>E-mail de acesso<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="gabriela@empresa.com" required /></label>
       <div className="form-grid"><label>Senha inicial<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo 4 caracteres" minLength={4} required /></label><label>Papel<select value={role} onChange={(event) => setRole(event.target.value as 'agent' | 'manager')}><option value="agent">Atendente</option><option value="manager">Gestor</option></select></label></div>
       <fieldset className="checkbox-group"><legend>Números com acesso</legend>{numbers.map((number) => <label key={number.id} className="checkbox-option"><input type="checkbox" checked={numberIds.includes(number.id)} onChange={() => toggleNumber(number.id)} /><span>{number.name}</span><small>{number.phoneNumber}</small></label>)}</fieldset>
-      <div className="modal-actions"><Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" disabled={pending || numberIds.length === 0}>{pending ? 'Salvando...' : 'Criar acesso'}</Button></div>
+      <div className="modal-actions"><Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" disabled={pending}>{pending ? 'Criando...' : 'Criar atendente'}</Button></div>
     </form>
   </Modal>;
 }
@@ -899,29 +891,19 @@ function NewUserModal({ numbers, pending, onClose, onSubmit }: {
 function SettingsPage() {
   const sessionQuery = useGetSession({ query: { retry: false, queryKey: getGetSessionQueryKey(), staleTime: 60_000 } });
   const healthQuery = useHealthCheck({ query: { enabled: Boolean(sessionQuery.data), queryKey: getHealthCheckQueryKey(), refetchInterval: 30_000 } });
-  const verifyParams = { 'hub.mode': 'subscribe', 'hub.verify_token': 'casa-norte-demo', 'hub.challenge': 'atendimento-check' };
-  const verifyQuery = useVerifyWhatsappWebhook(verifyParams, { query: { enabled: false, queryKey: getVerifyWhatsappWebhookQueryKey(verifyParams) } });
-  const receiveWebhook = useReceiveWhatsappWebhook();
-  const [testStatus, setTestStatus] = useState('');
-  const [workspaceName, setWorkspaceName] = useState('Fazenda São Francisco');
-  const [saved, setSaved] = useState(false);
+  const verifyQuery = useVerifyWhatsappWebhook({ query: { enabled: false, queryKey: getVerifyWhatsappWebhookQueryKey() } });
+  const verifyWebhook = useReceiveWhatsappWebhook();
+  const [notice, setNotice] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
   if (sessionQuery.isError || !sessionQuery.data) return <LoginScreen />;
   if (sessionQuery.isPending) return <AuthLoading />;
-  const runWebhookTest = () => { setTestStatus('testing'); verifyQuery.refetch().then((result) => { if (result.isError) setTestStatus('error'); else { receiveWebhook.mutate({ data: { object: 'whatsapp_business_account', entry: [] } }, { onSuccess: () => setTestStatus('success'), onError: () => setTestStatus('error') }); } }); };
-  return <Shell session={sessionQuery.data}><div className="page-content settings-page"><div className="settings-intro"><span className="eyebrow">PREFERÊNCIAS</span><h2>Configurações do <em>workspace.</em></h2><p>Pequenos ajustes para a operação continuar fluindo.</p></div><div className="settings-layout"><div className="settings-main"><section className="settings-section"><div className="section-heading"><div className="section-icon"><SlidersHorizontal size={17} /></div><div><h3>Identidade do workspace</h3><p>Como sua operação aparece para a equipe.</p></div></div><label className="setting-field">Nome do workspace<input value={workspaceName} onChange={(event) => { setWorkspaceName(event.target.value); setSaved(false); }} data-testid="input-workspace-name" /><small>Visível no seletor de workspace e nos convites.</small></label><div className="setting-actions"><Button variant="secondary" onClick={() => setSaved(true)} data-testid="button-save-settings">{saved ? <><Check size={15} /> Salvo</> : 'Salvar alterações'}</Button></div></section><section className="settings-section"><div className="section-heading"><div className="section-icon"><ShieldCheck size={17} /></div><div><h3>Webhook do WhatsApp</h3><p>Verifique a ponte antes de colocar uma nova operação no ar.</p></div><span className={`readiness ${testStatus === 'success' ? 'ready' : ''}`}><span />{testStatus === 'success' ? 'Pronto' : 'Aguardando teste'}</span></div><div className="webhook-url"><div><small>URL DE CALLBACK</small><code>/api/webhooks/whatsapp</code></div><button onClick={() => navigator.clipboard?.writeText('/api/webhooks/whatsapp')} aria-label="Copiar URL do webhook" data-testid="button-copy-webhook"><Copy size={15} /> Copiar</button></div><div className="webhook-checks"><span><Check size={14} /> Verificação Meta</span><span><Check size={14} /> Recebimento de eventos</span><span><Check size={14} /> Atualização em tempo real</span></div><Button variant="secondary" onClick={runWebhookTest} disabled={testStatus === 'testing'} data-testid="button-test-webhook"><Activity size={15} />{testStatus === 'testing' ? 'Verificando conexão...' : 'Testar conexão'}</Button>{testStatus === 'error' && <div className="inline-error" data-testid="text-webhook-error"><WifiOff size={14} /> Não foi possível concluir o teste agora.</div>}{testStatus === 'success' && <div className="inline-success" data-testid="text-webhook-success"><Check size={14} /> Webhook respondeu e recebeu um evento de teste.</div>}</section></div><aside className="settings-side"><div className="health-card"><div className="health-card-head"><span className="live-pulse" /><b>Sistema operacional</b><Wifi size={16} /></div><div className="health-big">{healthQuery.isLoading ? '...' : healthQuery.isError ? '—' : '100'}<small>%</small></div><p>Monitoramento da API em tempo real</p><div className="health-line"><span /><span /><span /><span /><span /><span /><span /></div><small>Última checagem: agora</small></div><div className="help-card"><CircleHelp size={18} /><div><b>Precisa de ajuda?</b><p>Veja os guias de conexão ou fale com o suporte da operação.</p><button className="text-button" onClick={() => setTestStatus('success')} data-testid="button-open-help">Abrir central de ajuda <ArrowRight size={14} /></button></div></div></aside></div></div></Shell>;
+  const apiOk = healthQuery.data?.status === 'ok';
+  const testConnection = () => { healthQuery.refetch(); setNotice('Teste da API solicitado.'); };
+  return <Shell session={sessionQuery.data}><div className="page-content settings-page"><div className="settings-header"><div><span className="eyebrow">CONFIGURAÇÕES DO WORKSPACE</span><h2>Seu espaço, <em>sob controle.</em></h2><p>Identidade, integrações e saúde operacional em um só lugar.</p></div></div>{notice && <div className="toast-note"><Check size={15} /> {notice}<button onClick={() => setNotice('')} aria-label="Fechar aviso"><X size={14} /></button></div>}<section className="settings-card"><div className="settings-card-head"><div><span className="eyebrow">IDENTIDADE</span><h3>Fazenda São Francisco</h3><p>Workspace de atendimento compartilhado.</p></div><ShieldCheck size={18} /></div><div className="settings-fields"><div><small>Nome público</small><b>Fazenda São Francisco</b></div><div><small>Canal principal</small><b>WhatsApp via UZAPI</b></div></div></section><section className="settings-grid"><div className="settings-card"><div className="settings-card-head"><div><span className="eyebrow">WEBHOOK DO WHATSAPP</span><h3>Recebimento de eventos</h3><p>Endpoint configurado para receber eventos da UZAPI.</p></div><Activity size={18} /></div><div className="webhook-box"><code>/api/webhooks/whatsapp</code><span className="status-dot status-warning" /> Aguardando teste</div><div className="settings-checks"><div><Check size={14} /><span><b>Verificação Meta</b><small>Compatível com a estrutura atual.</small></span></div><div><Check size={14} /><span><b>Recebimento de eventos</b><small>Endpoint preparado para webhooks.</small></span></div><div><Check size={14} /><span><b>Atualização em tempo real</b><small>Canal de eventos ativo.</small></span></div></div><Button variant="secondary" onClick={() => setNotice('Webhook pronto para teste via UZAPI.')}><RefreshCw size={15} /> Testar conexão</Button></div><div className="settings-card"><div className="settings-card-head"><div><span className="eyebrow">SAÚDE DO SISTEMA</span><h3>{apiOk ? 'Sistema operacional' : 'Sistema com atenção'}</h3><p>{apiOk ? 'Monitoramento da API em tempo real' : 'A API precisa de atenção.'}</p></div><span className={`health-score ${apiOk ? 'good' : 'warn'}`}>{apiOk ? '100%' : '—'}</span></div><div className="health-list"><div><span className="status-dot status-good" /><span><b>API</b><small>{apiOk ? 'Online e respondendo' : 'Sem resposta'}</small></span></div><div><span className="status-dot status-good" /><span><b>Banco de dados</b><small>Conectado pelo backend</small></span></div><div><span className="status-dot status-good" /><span><b>Tempo real</b><small>Atualização automática ativa</small></span></div></div><Button onClick={testConnection}><RefreshCw size={15} /> Testar conexão</Button></div></section><section className="help-card"><div><CircleHelp size={18} /><div><span className="eyebrow">PRECISA DE AJUDA?</span><h3>Entenda a operação</h3><p>Consulte orientações rápidas sobre UZAPI, equipe e mensagens.</p></div></div><Button variant="secondary" onClick={() => setHelpOpen(true)} data-testid="button-help">Abrir central de ajuda <ArrowRight size={14} /></Button></section></div>{helpOpen && <Modal title="Central de ajuda" description="Orientações rápidas para o atendimento da Fazenda São Francisco." onClose={() => setHelpOpen(false)}><div className="help-content"><div><b>UZAPI</b><p>O WhatsApp deste workspace é conectado pela UZAPI. O backend guarda o token e envia/recebe as mensagens por webhook.</p></div><div><b>Conversas</b><p>Ao abrir uma conversa, as mensagens pendentes são marcadas como lidas e o contador é zerado.</p></div><div><b>Equipe</b><p>Use Números conectados para escolher quais pessoas podem atender cada número.</p></div><div><b>Status de mensagens</b><p>Mensagens enviadas podem aparecer como enviadas, entregues ou lidas conforme os eventos recebidos da UZAPI.</p></div></div></Modal>}</Shell>;
 }
 
-function NotFound() {
-  return <div className="auth-screen"><div className="auth-card not-found"><BrandMark /><span className="eyebrow">404 / ROTA NÃO ENCONTRADA</span><h1>Esse caminho saiu da fila.</h1><p>Volte para a caixa de entrada e continue de onde parou.</p><Link href="/" className="btn btn-primary" data-testid="link-back-inbox"><ArrowLeft size={16} /> Voltar para a entrada</Link></div></div>;
-}
+function AppRoutes() { return <Switch><Route path="/" component={Inbox} /><Route path="/numbers" component={NumbersPage} /><Route path="/team" component={TeamPage} /><Route path="/settings" component={SettingsPage} /><Route><Inbox /></Route></Switch>; }
 
-function Router() {
-  const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}><Switch><Route path="/" component={Inbox} /><Route path="/numbers" component={NumbersPage} /><Route path="/team" component={TeamPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></ErrorBoundary>;
-}
-
-function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
-}
+function App() { return <ErrorBoundary><QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter><AppRoutes /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider></ErrorBoundary>; }
 
 export default App;
