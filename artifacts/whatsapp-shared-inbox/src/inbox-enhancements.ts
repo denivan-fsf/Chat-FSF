@@ -57,8 +57,8 @@ function styles() {
   style.textContent = `
     .fsf-tools{display:flex;gap:5px;margin-top:4px;opacity:0}
     .message-line:hover .fsf-tools{opacity:1}
-    .fsf-reply-btn,.fsf-compose-btn{border:1px solid #d5e2d8;background:#fff;color:#55796d;border-radius:7px;padding:5px 8px;cursor:pointer;font:600 9px var(--app-font-mono)}
-    .fsf-reply-btn:focus-visible,.fsf-compose-btn:focus-visible{outline:2px solid #77a98e;outline-offset:1px}
+    .fsf-reply-btn{border:1px solid #d5e2d8;background:#fff;color:#55796d;border-radius:7px;padding:5px 8px;cursor:pointer;font:600 9px var(--app-font-mono)}
+    .fsf-reply-btn:focus-visible{outline:2px solid #77a98e;outline-offset:1px}
     .fsf-reply-bar{display:flex;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;border-left:3px solid #77a98e;background:#edf5ee;border-radius:7px;color:#55766c;font-size:10px}
     .fsf-reply-bar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .fsf-reply-bar button{margin-left:auto;border:0;background:transparent;cursor:pointer}
@@ -70,13 +70,56 @@ function styles() {
     .fsf-video{max-width:320px;max-height:240px;border-radius:8px;display:block}
     .fsf-doc{display:block;color:inherit;text-decoration:none;padding:8px;border-radius:7px;background:rgba(90,120,105,.08)}
     .fsf-media-loading{display:inline-block;padding:9px 11px;border-radius:7px;background:rgba(90,120,105,.08);font-size:10px;color:#55766c}
-    .composer{position:relative !important;display:block !important;padding:7px 8px 38px !important;}
-    .composer textarea{display:block !important;width:100% !important;box-sizing:border-box !important;padding:0 0 2px !important;min-height:34px !important;max-height:120px !important;}
-    .composer .composer-hint{display:block !important;position:absolute;right:53px;bottom:15px;margin:0;font-size:8px;line-height:1;color:#83978c;pointer-events:none;}
-    .fsf-compose-tools{position:absolute;right:9px;bottom:6px;display:flex;align-items:center;gap:5px;z-index:20;background:transparent;}
-    .fsf-compose-btn{width:30px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;}
-    .fsf-compose-tools .fsf-compose-btn[title="Enviar mensagem"]{margin-left:2px;min-width:34px;width:34px;height:30px;font-size:15px;font-weight:700;}
-    .fsf-compose-btn.recording{font-weight:800;}
+
+    .composer{position:relative !important;display:block !important;padding:7px 8px 42px !important;}
+    .composer textarea{display:block !important;width:100% !important;box-sizing:border-box !important;padding:0 !important;min-height:34px !important;max-height:120px !important;}
+    .composer .composer-hint{display:none !important;}
+
+    .fsf-compose-tools{
+      position:absolute !important;
+      left:8px !important;
+      right:8px !important;
+      bottom:6px !important;
+      display:flex !important;
+      align-items:center !important;
+      gap:6px !important;
+      z-index:20 !important;
+      background:transparent !important;
+    }
+    .fsf-compose-btn{
+      border:0 !important;
+      background:#0b2f29 !important;
+      color:#d9f75c !important;
+      border-radius:7px !important;
+      width:32px !important;
+      height:30px !important;
+      min-width:32px !important;
+      padding:0 !important;
+      display:inline-flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      cursor:pointer !important;
+      box-shadow:none !important;
+    }
+    .fsf-compose-btn:hover{filter:brightness(1.08)}
+    .fsf-compose-btn:focus-visible{outline:2px solid #77a98e !important;outline-offset:1px}
+    .fsf-compose-btn svg{width:16px;height:16px;stroke:currentColor;}
+    .fsf-compose-btn.recording{background:#163c34 !important;}
+    .fsf-compose-hint{
+      color:#83978c !important;
+      font-size:8px !important;
+      line-height:1 !important;
+      white-space:nowrap !important;
+      pointer-events:none !important;
+      margin-left:auto !important;
+    }
+    .fsf-compose-tools .fsf-send-btn{
+      width:36px !important;
+      min-width:36px !important;
+      height:30px !important;
+      font-size:17px !important;
+      font-weight:800 !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -97,85 +140,332 @@ function addReplyButton(line: Element, message?: EnhancedMessage) {
   const id = message?.id || String(line.getAttribute('data-testid') || '').replace(/^message-/, '');
   if (!id) return;
   const text = line.querySelector('.bubble')?.textContent?.trim() || 'Mensagem';
-  const tools = document.createElement('div'); tools.className = 'fsf-tools';
-  const button = document.createElement('button'); button.type='button'; button.className='fsf-reply-btn'; button.textContent='↩ Responder';
-  button.addEventListener('click',(event)=>{event.preventDefault();event.stopPropagation();setReply(id,text);(document.querySelector('.composer textarea') as HTMLTextAreaElement|null)?.focus();});
-  tools.appendChild(button); line.querySelector('.bubble-wrap')?.appendChild(tools);
+  const tools = document.createElement('div');
+  tools.className = 'fsf-tools';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'fsf-reply-btn';
+  button.textContent = '↩ Responder';
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setReply(id, text);
+    (document.querySelector('.composer textarea') as HTMLTextAreaElement | null)?.focus();
+  });
+  tools.appendChild(button);
+  line.querySelector('.bubble-wrap')?.appendChild(tools);
 }
 
 async function mediaObjectUrl(message: EnhancedMessage) {
   if (!message.mediaUrl) return null;
-  const cached = mediaObjectUrls.get(message.id); if (cached) return cached;
-  const response = await fetch(`${API}/api/messages/${encodeURIComponent(message.id)}/media`,{credentials:'include',headers:authHeaders()});
+  const cached = mediaObjectUrls.get(message.id);
+  if (cached) return cached;
+  const response = await fetch(`${API}/api/messages/${encodeURIComponent(message.id)}/media`, {
+    credentials: 'include',
+    headers: authHeaders(),
+  });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const blob = await response.blob(); const objectUrl = URL.createObjectURL(blob); mediaObjectUrls.set(message.id,objectUrl); return objectUrl;
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  mediaObjectUrls.set(message.id, objectUrl);
+  return objectUrl;
 }
 
 async function renderMedia(bubble: HTMLElement, message: EnhancedMessage) {
-  bubble.textContent='';
-  if(!message.mediaUrl){bubble.textContent=message.content||'';return;}
-  const loading=document.createElement('span'); loading.className='fsf-media-loading'; loading.textContent='Carregando mídia...'; bubble.appendChild(loading);
-  try{
-    const src=await mediaObjectUrl(message); loading.remove(); if(!src)throw new Error('Mídia indisponível');
-    const type=String(message.mediaType||'').toLowerCase();
-    if(type.startsWith('audio/')){const audio=document.createElement('audio');audio.className='fsf-audio';audio.controls=true;audio.preload='metadata';audio.src=src;bubble.appendChild(audio);return;}
-    if(type.startsWith('image/')){const image=document.createElement('img');image.className='fsf-image';image.src=src;image.alt=message.content||'Imagem';bubble.appendChild(image);return;}
-    if(type.startsWith('video/')){const video=document.createElement('video');video.className='fsf-video';video.controls=true;video.preload='metadata';video.src=src;bubble.appendChild(video);return;}
-    const link=document.createElement('a');link.className='fsf-doc';link.href=src;link.download=message.content||'arquivo';link.target='_blank';link.rel='noopener noreferrer';link.textContent=`📎 ${message.content||'Abrir arquivo'}`;bubble.appendChild(link);
-  }catch{bubble.textContent=`📎 ${message.content||'Mídia indisponível'}`;}
+  bubble.textContent = '';
+  if (!message.mediaUrl) {
+    bubble.textContent = message.content || '';
+    return;
+  }
+  const loading = document.createElement('span');
+  loading.className = 'fsf-media-loading';
+  loading.textContent = 'Carregando mídia...';
+  bubble.appendChild(loading);
+  try {
+    const src = await mediaObjectUrl(message);
+    loading.remove();
+    if (!src) throw new Error('Mídia indisponível');
+    const type = String(message.mediaType || '').toLowerCase();
+    if (type.startsWith('audio/')) {
+      const audio = document.createElement('audio');
+      audio.className = 'fsf-audio';
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.src = src;
+      bubble.appendChild(audio);
+      return;
+    }
+    if (type.startsWith('image/')) {
+      const image = document.createElement('img');
+      image.className = 'fsf-image';
+      image.src = src;
+      image.alt = message.content || 'Imagem';
+      bubble.appendChild(image);
+      return;
+    }
+    if (type.startsWith('video/')) {
+      const video = document.createElement('video');
+      video.className = 'fsf-video';
+      video.controls = true;
+      video.preload = 'metadata';
+      video.src = src;
+      bubble.appendChild(video);
+      return;
+    }
+    const link = document.createElement('a');
+    link.className = 'fsf-doc';
+    link.href = src;
+    link.download = message.content || 'arquivo';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `📎 ${message.content || 'Abrir arquivo'}`;
+    bubble.appendChild(link);
+  } catch {
+    bubble.textContent = `📎 ${message.content || 'Mídia indisponível'}`;
+  }
 }
 
-async function enhanceMessages(){
-  const thread=document.querySelector('.messages-scroller');if(!thread)return;
-  const id=await activeConversation().catch(()=> '');if(!id)return;
-  try{
-    const messages:EnhancedMessage[]=await api(`/api/conversations/${encodeURIComponent(id)}/messages`);const map=new Map(messages.map((item)=>[item.id,item]));
-    thread.querySelectorAll('.message-line').forEach((line)=>{const message=map.get(String(line.getAttribute('data-testid')||'').replace(/^message-/,''));if(message?.replyTo&&!line.querySelector('.fsf-quote')){const q=document.createElement('div');q.className='fsf-quote';q.textContent=message.replyTo.content||'Mensagem';line.querySelector('.bubble-wrap')?.insertBefore(q,line.querySelector('.bubble')||null);}if(message?.mediaUrl&&line.querySelector('.bubble')&&!line.querySelector('.fsf-audio,.fsf-image,.fsf-video,.fsf-doc,.fsf-media-loading')){void renderMedia(line.querySelector('.bubble') as HTMLElement,message);}addReplyButton(line,message);});
-  }catch{thread.querySelectorAll('.message-line').forEach((line)=>addReplyButton(line));}
+async function enhanceMessages() {
+  const thread = document.querySelector('.messages-scroller');
+  if (!thread) return;
+  const id = await activeConversation().catch(() => '');
+  if (!id) return;
+  try {
+    const messages: EnhancedMessage[] = await api(`/api/conversations/${encodeURIComponent(id)}/messages`);
+    const map = new Map(messages.map((item) => [item.id, item]));
+    thread.querySelectorAll('.message-line').forEach((line) => {
+      const message = map.get(String(line.getAttribute('data-testid') || '').replace(/^message-/, ''));
+      if (message?.replyTo && !line.querySelector('.fsf-quote')) {
+        const q = document.createElement('div');
+        q.className = 'fsf-quote';
+        q.textContent = message.replyTo.content || 'Mensagem';
+        line.querySelector('.bubble-wrap')?.insertBefore(q, line.querySelector('.bubble') || null);
+      }
+      if (message?.mediaUrl && line.querySelector('.bubble') && !line.querySelector('.fsf-audio,.fsf-image,.fsf-video,.fsf-doc,.fsf-media-loading')) {
+        void renderMedia(line.querySelector('.bubble') as HTMLElement, message);
+      }
+      addReplyButton(line, message);
+    });
+  } catch {
+    thread.querySelectorAll('.message-line').forEach((line) => addReplyButton(line));
+  }
 }
 
-function fileToDataUrl(input:File){return new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(reader.error||new Error('Falha ao ler arquivo'));reader.readAsDataURL(input);});}
-function showFile(){document.querySelector('.fsf-file')?.remove();if(!file)return;const area=document.querySelector('.composer-area');if(!area)return;const box=document.createElement('div');box.className='fsf-file';box.innerHTML=`<span>${file.type.startsWith('audio/')?'🎙':'📎'}</span><span>${escapeHtml(file.name)}</span><button type="button" aria-label="Remover anexo">×</button>`;box.querySelector('button')?.addEventListener('click',()=>{file=null;showFile();});const bar=area.querySelector('.fsf-reply-bar');if(bar)bar.insertAdjacentElement('afterend',box);else area.prepend(box);}
-function chooseFile(){const input=document.createElement('input');input.type='file';input.accept='audio/*,image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';input.onchange=()=>{file=input.files?.[0]||null;showFile();};input.click();}
+function fileToDataUrl(input: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler arquivo'));
+    reader.readAsDataURL(input);
+  });
+}
 
-async function record(button:HTMLButtonElement){
-  if(recorder){recorder.stop();return;}
-  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){window.alert('Seu navegador não permite gravação de áudio.');return;}
-  try{
-    recorderStream=await navigator.mediaDevices.getUserMedia({audio:true});
-    const preferred=['audio/ogg;codecs=opus','audio/ogg','audio/webm;codecs=opus','audio/webm'];
-    const mime=preferred.find((item)=>MediaRecorder.isTypeSupported(item));
-    recorder=mime?new MediaRecorder(recorderStream,{mimeType:mime}):new MediaRecorder(recorderStream);chunks=[];
-    button.textContent='■';button.classList.add('recording');button.title='Parar gravação';
-    recorder.ondataavailable=(event)=>{if(event.data.size)chunks.push(event.data);};
-    recorder.onstop=()=>{const mimeType=recorder?.mimeType||'audio/ogg';const ext=mimeType.includes('ogg')?'ogg':'webm';const blob=new Blob(chunks,{type:mimeType});file=new File([blob],`audio-${Date.now()}.${ext}`,{type:mimeType});recorderStream?.getTracks().forEach((track)=>track.stop());recorder=null;recorderStream=null;chunks=[];button.textContent='🎙';button.title='Gravar áudio';button.classList.remove('recording');showFile();};
+function showFile() {
+  document.querySelector('.fsf-file')?.remove();
+  if (!file) return;
+  const area = document.querySelector('.composer-area');
+  if (!area) return;
+  const box = document.createElement('div');
+  box.className = 'fsf-file';
+  box.innerHTML = `<span>${file.type.startsWith('audio/') ? '🎙' : '📎'}</span><span>${escapeHtml(file.name)}</span><button type="button" aria-label="Remover anexo">×</button>`;
+  box.querySelector('button')?.addEventListener('click', () => { file = null; showFile(); });
+  const bar = area.querySelector('.fsf-reply-bar');
+  if (bar) bar.insertAdjacentElement('afterend', box); else area.prepend(box);
+}
+
+function chooseFile() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'audio/*,image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
+  input.onchange = () => { file = input.files?.[0] || null; showFile(); };
+  input.click();
+}
+
+function microphoneIcon() {
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.5" y="3" width="7" height="11" rx="3.5" stroke="currentColor" stroke-width="2"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 21h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+}
+
+async function record(button: HTMLButtonElement) {
+  if (recorder) {
+    recorder.stop();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    window.alert('Seu navegador não permite gravação de áudio.');
+    return;
+  }
+  try {
+    recorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const preferred = ['audio/ogg;codecs=opus', 'audio/ogg', 'audio/webm;codecs=opus', 'audio/webm'];
+    const mime = preferred.find((item) => MediaRecorder.isTypeSupported(item));
+    recorder = mime ? new MediaRecorder(recorderStream, { mimeType: mime }) : new MediaRecorder(recorderStream);
+    chunks = [];
+    button.innerHTML = '<span aria-hidden="true">■</span>';
+    button.classList.add('recording');
+    button.title = 'Parar gravação';
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data);
+    };
+
+    recorder.onstop = () => {
+      const activeRecorder = recorder;
+      const mimeType = activeRecorder?.mimeType || 'audio/ogg';
+      const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+      const blob = new Blob(chunks, { type: mimeType });
+      file = new File([blob], `audio-${Date.now()}.${ext}`, { type: mimeType });
+      recorderStream?.getTracks().forEach((track) => track.stop());
+      recorder = null;
+      recorderStream = null;
+      chunks = [];
+      button.innerHTML = microphoneIcon();
+      button.title = 'Gravar áudio';
+      button.classList.remove('recording');
+      showFile();
+    };
+
     recorder.start(200);
-  }catch(error){recorderStream?.getTracks().forEach((track)=>track.stop());recorder=null;recorderStream=null;button.textContent='🎙';button.title='Gravar áudio';button.classList.remove('recording');window.alert(error instanceof Error?error.message:'Não foi possível acessar o microfone.');}
+  } catch (error) {
+    recorderStream?.getTracks().forEach((track) => track.stop());
+    recorder = null;
+    recorderStream = null;
+    button.innerHTML = microphoneIcon();
+    button.title = 'Gravar áudio';
+    button.classList.remove('recording');
+    window.alert(error instanceof Error ? error.message : 'Não foi possível acessar o microfone.');
+  }
 }
 
-function appendSent(message:EnhancedMessage){const thread=document.querySelector('.messages-scroller');if(!thread)return;const line=document.createElement('div');line.className='message-line own';line.dataset.testid=`message-${message.id}`;const wrap=document.createElement('div');wrap.className='bubble-wrap';const author=document.createElement('span');author.className='bubble-author';author.textContent='Você';wrap.appendChild(author);if(message.replyTo){const q=document.createElement('div');q.className='fsf-quote';q.textContent=message.replyTo.content||'Mensagem';wrap.appendChild(q);}const bubble=document.createElement('div');bubble.className='bubble';wrap.appendChild(bubble);const meta=document.createElement('small');meta.className='bubble-meta';meta.textContent=new Date(message.createdAt||Date.now()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});meta.insertAdjacentHTML('beforeend',' ✓');wrap.appendChild(meta);line.appendChild(wrap);thread.appendChild(line);thread.scrollTop=thread.scrollHeight;addReplyButton(line,message);void renderMedia(bubble,message);}
-
-function syncTextarea(textarea:HTMLTextAreaElement,value:string){const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')?.set;if(setter)setter.call(textarea,value);else textarea.value=value;textarea.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward',data:null}));textarea.dispatchEvent(new Event('change',{bubbles:true}));}
-
-async function send(){
-  if(sending)return;const textarea=document.querySelector('.composer textarea') as HTMLTextAreaElement|null;if(!textarea||textarea.disabled)return;const content=textarea.value.trim();if(!content&&!file)return;const id=await activeConversation();if(!id){window.alert('Não consegui identificar a conversa aberta.');return;}sending=true;
-  try{const body:any={content,replyToMessageId:reply?.id||null};if(file)body.file={name:file.name,type:file.type||'application/octet-stream',data:await fileToDataUrl(file)};const message=await api(`/api/conversations/${encodeURIComponent(id)}/messages/advanced`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});syncTextarea(textarea,'');file=null;showFile();clearReply();appendSent(message);requestAnimationFrame(()=>textarea.focus());}
-  catch(error){window.alert(error instanceof Error?error.message:'Não foi possível enviar.');}
-  finally{sending=false;}
+function appendSent(message: EnhancedMessage) {
+  const thread = document.querySelector('.messages-scroller');
+  if (!thread) return;
+  const line = document.createElement('div');
+  line.className = 'message-line own';
+  line.dataset.testid = `message-${message.id}`;
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-wrap';
+  const author = document.createElement('span');
+  author.className = 'bubble-author';
+  author.textContent = 'Você';
+  wrap.appendChild(author);
+  if (message.replyTo) {
+    const q = document.createElement('div');
+    q.className = 'fsf-quote';
+    q.textContent = message.replyTo.content || 'Mensagem';
+    wrap.appendChild(q);
+  }
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  wrap.appendChild(bubble);
+  const meta = document.createElement('small');
+  meta.className = 'bubble-meta';
+  meta.textContent = new Date(message.createdAt || Date.now()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  meta.insertAdjacentHTML('beforeend', ' ✓');
+  wrap.appendChild(meta);
+  line.appendChild(wrap);
+  thread.appendChild(line);
+  thread.scrollTop = thread.scrollHeight;
+  addReplyButton(line, message);
+  void renderMedia(bubble, message);
 }
 
-function composer(){
-  const root=document.querySelector('.composer');if(!root)return;const textarea=root.querySelector('textarea') as HTMLTextAreaElement|null;if(!textarea)return;
-  const oldSend=root.querySelector('.send-btn') as HTMLElement|null;if(oldSend)oldSend.style.display='none';
-  const oldAttach=root.querySelector('.composer-tool') as HTMLElement|null;if(oldAttach)oldAttach.style.display='none';
-  const oldHint=root.querySelector('.composer-hint') as HTMLElement|null;if(oldHint)oldHint.style.display='block';
-  if(root.querySelector('.fsf-compose-tools'))return;
-  const tools=document.createElement('div');tools.className='fsf-compose-tools';
-  const attach=document.createElement('button');attach.type='button';attach.className='fsf-compose-btn';attach.title='Anexar arquivo';attach.textContent='📎';attach.onclick=chooseFile;
-  const mic=document.createElement('button');mic.type='button';mic.className='fsf-compose-btn';mic.title='Gravar áudio';mic.textContent='🎙';mic.onclick=()=>void record(mic);
-  const sendButton=document.createElement('button');sendButton.type='button';sendButton.className='fsf-compose-btn';sendButton.title='Enviar mensagem';sendButton.textContent='➤';sendButton.onclick=()=>void send();
-  tools.append(attach,mic,sendButton);root.appendChild(tools);
+function syncTextarea(textarea: HTMLTextAreaElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+  if (setter) setter.call(textarea, value); else textarea.value = value;
+  textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null }));
+  textarea.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-let timer:number|undefined;function schedule(){if(timer)clearTimeout(timer);timer=window.setTimeout(()=>{composer();void enhanceMessages();},100);}
-export function installInboxEnhancements(){styles();const observer=new MutationObserver(schedule);observer.observe(document.body,{childList:true,subtree:true});schedule();}
+async function send() {
+  if (sending) return;
+  const textarea = document.querySelector('.composer textarea') as HTMLTextAreaElement | null;
+  if (!textarea || textarea.disabled) return;
+  const content = textarea.value.trim();
+  if (!content && !file) return;
+  const id = await activeConversation();
+  if (!id) {
+    window.alert('Não consegui identificar a conversa aberta.');
+    return;
+  }
+  sending = true;
+  try {
+    const body: any = { content, replyToMessageId: reply?.id || null };
+    if (file) body.file = { name: file.name, type: file.type || 'application/octet-stream', data: await fileToDataUrl(file) };
+    const message = await api(`/api/conversations/${encodeURIComponent(id)}/messages/advanced`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    syncTextarea(textarea, '');
+    file = null;
+    showFile();
+    clearReply();
+    appendSent(message);
+    requestAnimationFrame(() => textarea.focus());
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : 'Não foi possível enviar.');
+  } finally {
+    sending = false;
+  }
+}
+
+function composer() {
+  const root = document.querySelector('.composer');
+  if (!root) return;
+  const textarea = root.querySelector('textarea') as HTMLTextAreaElement | null;
+  if (!textarea) return;
+  const oldSend = root.querySelector('.send-btn') as HTMLElement | null;
+  if (oldSend) oldSend.style.display = 'none';
+  const oldAttach = root.querySelector('.composer-tool') as HTMLElement | null;
+  if (oldAttach) oldAttach.style.display = 'none';
+  const oldHint = root.querySelector('.composer-hint') as HTMLElement | null;
+  if (oldHint) oldHint.style.display = 'none';
+  if (root.querySelector('.fsf-compose-tools')) return;
+
+  const tools = document.createElement('div');
+  tools.className = 'fsf-compose-tools';
+
+  const attach = document.createElement('button');
+  attach.type = 'button';
+  attach.className = 'fsf-compose-btn btn btn-primary';
+  attach.title = 'Anexar arquivo';
+  attach.setAttribute('aria-label', 'Anexar arquivo');
+  attach.innerHTML = '<span aria-hidden="true">📎</span>';
+  attach.onclick = (event) => { event.preventDefault(); event.stopPropagation(); chooseFile(); };
+
+  const mic = document.createElement('button');
+  mic.type = 'button';
+  mic.className = 'fsf-compose-btn btn btn-primary';
+  mic.title = 'Gravar áudio';
+  mic.setAttribute('aria-label', 'Gravar áudio');
+  mic.innerHTML = microphoneIcon();
+  mic.onclick = (event) => { event.preventDefault(); event.stopPropagation(); void record(mic); };
+
+  const hint = document.createElement('span');
+  hint.className = 'fsf-compose-hint';
+  hint.textContent = 'Enter para enviar';
+
+  const sendButton = document.createElement('button');
+  sendButton.type = 'button';
+  sendButton.className = 'fsf-compose-btn fsf-send-btn btn btn-primary';
+  sendButton.title = 'Enviar mensagem';
+  sendButton.setAttribute('aria-label', 'Enviar mensagem');
+  sendButton.innerHTML = '<span aria-hidden="true">➤</span>';
+  sendButton.onclick = (event) => { event.preventDefault(); event.stopPropagation(); void send(); };
+
+  tools.append(attach, mic, hint, sendButton);
+  root.appendChild(tools);
+}
+
+let timer: number | undefined;
+function schedule() {
+  if (timer) clearTimeout(timer);
+  timer = window.setTimeout(() => { composer(); void enhanceMessages(); }, 100);
+}
+
+export function installInboxEnhancements() {
+  styles();
+  const observer = new MutationObserver(schedule);
+  observer.observe(document.body, { childList: true, subtree: true });
+  schedule();
+}
