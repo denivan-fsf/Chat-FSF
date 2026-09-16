@@ -190,10 +190,16 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
     const name = String(file.name || 'arquivo');
     const mimeType = String(file.type || 'application/octet-stream').toLowerCase();
     const raw = String(file.data || '');
-    const match = raw.match(/^data:[^;]+;base64,(.+)$/);
-    if (!match) return res.status(400).json({ error: 'Arquivo inválido' });
+    const comma = raw.indexOf(',');
+    if (!raw.startsWith('data:') || comma < 0) {
+      return res.status(400).json({ error: 'Arquivo inválido' });
+    }
 
-    const buffer = Buffer.from(match[1], 'base64');
+    const base64Data = raw.slice(comma + 1).replace(/\s/g, '');
+    if (!base64Data) return res.status(400).json({ error: 'Arquivo vazio' });
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    if (!buffer.length) return res.status(400).json({ error: 'Arquivo vazio' });
     if (buffer.length > 20 * 1024 * 1024) return res.status(413).json({ error: 'O arquivo deve ter no máximo 20 MB' });
 
     const form = new FormData();
@@ -258,8 +264,18 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
     broadcastRealtime({ type: 'message.created', conversationId: req.params.id });
 
     const full = await pool.query(`
-      select m.*,u.id as sent_user_id,u.name as sent_user_name,u.email as sent_user_email,u.role as sent_user_role,u.online as sent_user_online,
-      r.id as reply_to_id,r.content as reply_to_content,r.media_url as reply_to_media_url,r.media_type as reply_to_media_type,r.direction as reply_to_direction
+      select
+        m.*,
+        u.id as sent_user_id,
+        u.name as sent_user_name,
+        u.email as sent_user_email,
+        u.role as sent_user_role,
+        u.online as sent_user_online,
+        r.id as reply_to_id,
+        r.content as reply_to_content,
+        r.media_url as reply_to_media_url,
+        r.media_type as reply_to_media_type,
+        r.direction as reply_to_direction
       from public.messages m
       left join public.workspace_users u on u.id=m.sent_by_user_id
       left join public.messages r on r.id=m.reply_to_message_id
@@ -272,5 +288,132 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
     return res.status(502).json({ error: 'Não foi possível comunicar com a UZAPI' });
   }
 }));
+
+router.post(
+  [
+    '/webhooks/whatsapp',
+    '/webhook/message/audio',
+    '/webhook/message/image',
+    '/webhook/message/video',
+    '/webhook/message/document',
+  ],
+  async (req: any, res: any, next: any) => {
+    try {
+      const payload = req.body || {};
+      const entries = Array.isArray(payload.entry) ? payload.entry : [];
+      const token = process.env.UZAPI_ACCESS_TOKEN;
+      const version = process.env.UZAPI_VERSION || 'v1';
+      if (!token) return next();
+
+      let handledMedia = false;
+
+      for (const entry of entries) {
+        for (const change of entry?.changes || []) {
+          const value = change?.value || {};
+          if (change?.field !== 'messages') continue;
+
+          const metadata = value?.metadata || {};
+          const phoneNumberId = String(metadata?.phone_number_id || '').trim();
+          const displayPhone = String(metadata?.display_phone_number || '').replace(/\D/g, '');
+          const messages = Array.isArray(value?.messages) ? value.messages : [];
+          const mediaMessages = messages.filter((m: any) => ['audio', 'image', 'video', 'document'].includes(String(m?.type || '').toLowerCase()));
+          if (!mediaMessages.length) continue;
+
+          let numberQ: any;
+          if (phoneNumberId) {
+            numberQ = await pool.query('select id,uzapi_username,phone_number_id from public.whatsapp_numbers where phone_number_id=$1 limit 1', [phoneNumberId]);
+          }
+          if ((!numberQ || !numberQ.rows[0]) && displayPhone) {
+            numberQ = await pool.query('select id,uzapi_username,phone_number_id from public.whatsapp_numbers where phone_number=$1 limit 1', [displayPhone]);
+          }
+          if (!numberQ?.rows[0]) continue;
+
+          const numberId = numberQ.rows[0].id;
+          const username = numberQ.rows[0].uzapi_username || process.env.UZAPI_USERNAME;
+          if (!username) continue;
+
+          for (const message of mediaMessages) {
+            const providerId = String(message?.id || '').trim() || null;
+            if (!providerId) continue;
+
+            const existing = await pool.query('select id from public.messages where provider_message_id=$1 limit 1', [providerId]);
+            if (existing.rows[0]) continue;
+
+            const phone = String(message?.from || '').replace(/\D/g, '');
+            if (!phone) continue;
+
+            const senderName = safeName(
+              value?.contacts?.find((c: any) => String(c?.wa_id || '').replace(/\D/g, '') === phone)?.profile?.name ||
+              value?.contacts?.[0]?.profile?.name ||
+              value?.contacts?.[0]?.name,
+            );
+
+            const type = String(message.type || '').toLowerCase();
+            const media = message[type] || {};
+            const mediaId = String(media?.id || '').trim();
+            if (!mediaId) continue;
+
+            const mimeType = String(
+              media?.mime_type ||
+              (type === 'audio' ? 'audio/ogg; codecs=opus' :
+               type === 'image' ? 'image/jpeg' :
+               type === 'video' ? 'video/mp4' :
+               'application/octet-stream'),
+            );
+            const content = String(
+              media?.caption ||
+              media?.filename ||
+              (type === 'audio' ? 'Áudio' : type === 'image' ? 'Imagem' : type === 'video' ? 'Vídeo' : 'Arquivo'),
+            );
+
+            const ct = await pool.query(`
+              insert into public.contacts(name,phone_number)
+              values($1,$2)
+              on conflict(phone_number)
+              do update set
+                name=case when excluded.name <> 'Cliente' then excluded.name else public.contacts.name end,
+                updated_at=now()
+              returning id
+            `, [senderName, phone]);
+
+            const cv = await pool.query(`
+              insert into public.conversations(contact_id,whatsapp_number_id,status,unread_count,last_message_preview,last_message_at)
+              values($1,$2,'open',1,$3,now())
+              on conflict(contact_id,whatsapp_number_id)
+              do update set
+                unread_count=public.conversations.unread_count+1,
+                last_message_preview=excluded.last_message_preview,
+                last_message_at=excluded.last_message_at,
+                updated_at=now()
+              returning id
+            `, [ct.rows[0].id, numberId, content]);
+
+            await pool.query(`
+              insert into public.messages(
+                conversation_id,direction,content,media_url,media_type,status,provider_message_id,created_at
+              )
+              values($1,'inbound',$2,$3,$4,'delivered',$5,coalesce(to_timestamp($6),now()))
+            `, [
+              cv.rows[0].id,
+              content,
+              mediaRef(mediaId),
+              mimeType,
+              providerId,
+              message?.timestamp || null,
+            ]);
+
+            broadcastRealtime({ type: 'message.received', conversationId: cv.rows[0].id });
+            handledMedia = true;
+          }
+        }
+      }
+
+      return handledMedia ? res.status(200).json({ ok: true, mediaProcessed: true }) : next();
+    } catch (error) {
+      console.error('Erro webhook de mídia UZAPI', error);
+      return next(error);
+    }
+  },
+);
 
 export default router;
