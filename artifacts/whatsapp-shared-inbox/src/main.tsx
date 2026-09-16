@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react';
 import { installInboxEnhancements } from './inbox-enhancements';
+import { installAudioDurationEnhancement } from './audio-duration-enhancement';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -27,3 +28,4 @@ createRoot(rootElement).render(
 );
 
 installInboxEnhancements();
+installAudioDurationEnhancement();
