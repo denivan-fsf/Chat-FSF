@@ -29,15 +29,18 @@ app.use(
 );
 app.use(cors({
   origin: (origin, cb) => {
-    const allowed = (process.env.CLIENT_URL || '').split(',').map(x=>x.trim()).filter(Boolean);
+    const allowed = (process.env.CLIENT_URL || '').split(',').map(x => x.trim()).filter(Boolean);
     if (!origin || allowed.length === 0 || allowed.includes(origin)) return cb(null, true);
     return cb(new Error('Origem não permitida pelo CORS'));
   },
   credentials: true,
 }));
 app.use(cookieParser());
-app.use(express.json({ limit: '30mb' }));
-app.use(express.urlencoded({ extended: true, limit: '30mb' }));
+
+// Anexos chegam como base64 em JSON. 40 MB de payload deixa margem
+// suficiente para um arquivo de até 20 MB após a expansão do base64.
+app.use(express.json({ limit: '40mb' }));
+app.use(express.urlencoded({ extended: true, limit: '40mb' }));
 
 app.use("/api", router);
 
