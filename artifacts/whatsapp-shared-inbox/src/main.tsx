@@ -8,6 +8,7 @@ import { installAudioDirectEnhancement } from './audio-direct-enhancement';
 import { installUnreadCountEnhancement } from './inbox-unread-count';
 import { installSettingsStaticPanel } from './settings-static-panel';
 import { installMediaViewerEnhancement } from './media-viewer-enhancement';
+import { installMediaUiFinal } from './media-ui-final';
 import './index.css';
 import './ui-fixes.css';
 
@@ -17,13 +18,7 @@ if (!rootElement) {
   throw new Error('Elemento root não encontrado');
 }
 
-// O frontend Render está hospedado em um domínio diferente da API.
-// As rotas geradas usam /api/... relativo, então precisamos apontá-las
-// explicitamente para o backend Render.
 setBaseUrl(import.meta.env.VITE_API_URL || null);
-
-// O login grava o access token no localStorage. O client HTTP usa esse
-// token automaticamente nas próximas chamadas para a API.
 setAuthTokenGetter(() => localStorage.getItem('fsf_access_token'));
 
 createRoot(rootElement).render(
@@ -38,3 +33,4 @@ installAudioDirectEnhancement();
 installUnreadCountEnhancement();
 installSettingsStaticPanel();
 installMediaViewerEnhancement();
+installMediaUiFinal();
