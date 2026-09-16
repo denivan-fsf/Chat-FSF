@@ -340,7 +340,42 @@ function ConversationView({ id, session, users }: { id: string; session: Session
 }
 
 function MessageBubble({ message, own }: { message: Message; own: boolean }) {
-  return <div className={`message-line ${own ? 'own' : ''}`} data-testid={`message-${message.id}`}><div className="bubble-avatar">{own ? <Avatar name={message.sentByUser?.name} initials={message.sentByUser?.initials} size="sm" /> : <span className="contact-bubble">{initials(message.sentByUser?.name, 'CN')}</span>}</div><div className="bubble-wrap"><span className="bubble-author">{own ? message.sentByUser?.name ?? 'Você' : 'Cliente'}</span><div className="bubble">{message.content}</div><small>{formatTime(message.createdAt)} {own && (message.status === 'pending' ? <Clock3 size={11} /> : <CheckCheck size={12} />)}</small></div></div>;
+  const senderName = message.sentByUser?.name ?? 'Você';
+
+  const statusIcon =
+    message.status === 'pending' ? (
+      <Clock3 size={11} />
+    ) : message.status === 'read' ? (
+      <CheckCheck size={12} className="message-status-read" />
+    ) : message.status === 'delivered' ? (
+      <CheckCheck size={12} />
+    ) : (
+      <Check size={12} />
+    );
+
+  return (
+    <div
+      className={`message-line ${own ? 'own' : 'received'}`}
+      data-testid={`message-${message.id}`}
+    >
+      <div className="bubble-wrap">
+        {own && <span className="bubble-author">{senderName}</span>}
+
+        <div className="bubble">
+          {message.content}
+        </div>
+
+        <small className="bubble-meta">
+          {formatTime(message.createdAt)}
+          {own && (
+            <span className="message-status">
+              {statusIcon}
+            </span>
+          )}
+        </small>
+      </div>
+    </div>
+  );
 }
 
 function ContextRail({ conversation, summary, numbers, users, onClose }: { conversation?: Conversation; summary?: any; numbers: WhatsappNumber[]; users: User[]; onClose: () => void }) {
