@@ -35,7 +35,7 @@ async function resolveMediaUrl(username: string, version: string, mediaId: strin
   });
   const data: any = await response.json().catch(() => ({}));
   if (!response.ok) return null;
-  return data?.url || null;
+  return String(data?.url || '') || null;
 }
 
 function mediaRef(mediaId: string) {
@@ -109,7 +109,7 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
 
   const text = String(content || '').trim();
   const replyId = replyToMessageId ? String(replyToMessageId) : null;
-  const name = String(file.name || 'imagem');
+  const name = String(file.name || `imagem-${Date.now()}.jpg`);
   const raw = String(file.data || '');
   const comma = raw.indexOf(',');
   if (!raw.startsWith('data:') || comma < 0) return res.status(400).json({ error: 'Imagem inválida' });
@@ -159,48 +159,61 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
     body: form,
   });
   const uploadData: any = await uploadResponse.json().catch(() => ({}));
-  if (!uploadResponse.ok) return res.status(502).json({ error: uploadData?.message || uploadData?.error || 'A UZAPI recusou o upload da imagem' });
+  if (!uploadResponse.ok) {
+    return res.status(502).json({ error: uploadData?.message || uploadData?.error || 'A UZAPI recusou o upload da imagem' });
+  }
 
-  const mediaId = uploadData?.id || uploadData?.mediaId;
+  const mediaId = String(uploadData?.id || uploadData?.mediaId || '').trim();
   if (!mediaId) return res.status(502).json({ error: 'A UZAPI não retornou o ID da imagem' });
 
-  const resolvedUrl = await resolveMediaUrl(username, version, String(mediaId), token);
-  const payload = resolvedUrl
-    ? { to, type: 'image', image: { link: resolvedUrl, ...(text ? { caption: text } : {}) } }
-    : { to, type: 'image', image: { id: mediaId, ...(text ? { caption: text } : {}) } };
-  if (replyProviderId) payload.context = { message_id: replyProviderId };
+  const resolvedUrl = await resolveMediaUrl(username, version, mediaId, token);
+  const context = replyProviderId ? { message_id: replyProviderId } : undefined;
+  const common = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    ...(context ? { context } : {}),
+    type: 'image',
+  };
 
-  const inserted = await pool.query(`
-    insert into public.messages(conversation_id,direction,content,media_url,media_type,sent_by_user_id,status,reply_to_message_id)
-    values($1,'outbound',$2,$3,$4,$5,'pending',$6)
-    returning id
-  `, [req.params.id, text || name, mediaRef(String(mediaId)), mimeType, req.currentUser.id, replyId]);
-  const localId = inserted.rows[0].id;
+  const payloadByUrl = resolvedUrl ? {
+    ...common,
+    image: { link: resolvedUrl, ...(text ? { caption: text } : {}) },
+  } : null;
+  const payloadById = {
+    ...common,
+    image: { id: mediaId, ...(text ? { caption: text } : {}) },
+  };
 
-  try {
+  let apiData: any = null;
+  let lastError = 'A UZAPI recusou o envio da imagem';
+  for (const payload of [payloadByUrl, payloadById].filter(Boolean)) {
     const apiResponse = await fetch(`https://api.uzapi.com.br/${encodeURIComponent(username)}/${encodeURIComponent(version)}/${encodeURIComponent(n.phone_number_id)}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const apiData: any = await apiResponse.json().catch(() => ({}));
-    if (!apiResponse.ok) {
-      await pool.query("update public.messages set status='failed' where id=$1", [localId]);
-      return res.status(502).json({ error: apiData?.message || apiData?.error || 'A UZAPI recusou o envio da imagem' });
+    const data: any = await apiResponse.json().catch(() => ({}));
+    if (apiResponse.ok) {
+      apiData = data;
+      break;
     }
-
-    const providerMessageId = apiData?.messageId || apiData?.id || null;
-    await pool.query("update public.messages set status='sent',provider_message_id=$2 where id=$1", [localId, providerMessageId]);
-    await pool.query('update public.conversations set last_message_preview=$2,last_message_at=now(),updated_at=now() where id=$1', [req.params.id, text || name]);
-    broadcastRealtime({ type: 'message.created', conversationId: req.params.id });
-
-    const publicMessage = await publicMessageById(localId);
-    return res.status(201).json(publicMessage);
-  } catch (error) {
-    await pool.query("update public.messages set status='failed' where id=$1", [localId]);
-    console.error('Erro no envio de imagem pela UZAPI', error);
-    return res.status(502).json({ error: 'Não foi possível comunicar com a UZAPI para enviar a imagem' });
+    lastError = data?.message || data?.error || lastError;
   }
+
+  if (!apiData) return res.status(502).json({ error: lastError });
+
+  const providerMessageId = apiData?.messageId || apiData?.id || apiData?.queueId || null;
+  const inserted = await pool.query(`
+    insert into public.messages(conversation_id,direction,content,media_url,media_type,sent_by_user_id,status,provider_message_id,reply_to_message_id)
+    values($1,'outbound',$2,$3,$4,$5,'sent',$6,$7)
+    returning id
+  `, [req.params.id, text || name, mediaRef(mediaId), mimeType, req.currentUser.id, providerMessageId, replyId]);
+
+  await pool.query('update public.conversations set last_message_preview=$2,last_message_at=now(),updated_at=now() where id=$1', [req.params.id, text || name]);
+  broadcastRealtime({ type: 'message.created', conversationId: req.params.id });
+
+  return res.status(201).json(await publicMessageById(inserted.rows[0].id));
 }));
 
 export default router;
