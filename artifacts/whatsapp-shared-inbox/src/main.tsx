@@ -4,6 +4,7 @@ import App from './App';
 import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react';
 import { installInboxEnhancements } from './inbox-enhancements';
 import { installAudioDurationEnhancement } from './audio-duration-enhancement';
+import { installAudioDirectEnhancement } from './audio-direct-enhancement';
 import './index.css';
 import './ui-fixes.css';
 
@@ -30,3 +31,4 @@ createRoot(rootElement).render(
 
 installInboxEnhancements();
 installAudioDurationEnhancement();
+installAudioDirectEnhancement();
