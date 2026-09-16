@@ -107,49 +107,78 @@ router.get('/conversations/:id/messages', requireUser(async (req: any, res: any)
   return res.json(q.rows.map(publicMessage));
 }));
 
-router.get('/messages/:messageId/media', requireUser(async (req: any, res: any) => {
+async function getMediaRow(messageId: string) {
   const q = await pool.query(`
-    select m.media_url,m.media_type,wn.uzapi_username,wn.phone_number_id
+    select m.media_url,m.media_type,m.content,c.id as conversation_id,wn.uzapi_username,wn.phone_number_id
     from public.messages m
     join public.conversations c on c.id=m.conversation_id
     join public.whatsapp_numbers wn on wn.id=c.whatsapp_number_id
     where m.id=$1
     limit 1
-  `, [req.params.messageId]);
+  `, [messageId]);
+  return q.rows[0] || null;
+}
 
-  const row = q.rows[0];
-  if (!row?.media_url) return res.status(404).json({ error: 'Mídia não encontrada' });
-
+async function getRemoteMedia(row: any) {
   const username = row.uzapi_username || process.env.UZAPI_USERNAME;
   const token = process.env.UZAPI_ACCESS_TOKEN;
   const version = process.env.UZAPI_VERSION || 'v1';
-  if (!username || !token) return res.status(500).json({ error: 'Credenciais UZAPI não configuradas no backend' });
+  if (!username || !token) throw new Error('Credenciais UZAPI não configuradas no backend');
 
-  const stored = String(row.media_url);
+  const stored = String(row.media_url || '');
   let remoteUrl: string | null = null;
   if (stored.startsWith('uzapi-media://')) {
     remoteUrl = await resolveMediaUrl(username, version, stored.slice('uzapi-media://'.length).trim(), token);
   } else {
     remoteUrl = stored;
   }
-
-  if (!remoteUrl) return res.status(502).json({ error: 'A UZAPI não retornou a URL da mídia' });
+  if (!remoteUrl) throw new Error('A UZAPI não retornou a URL da mídia');
 
   const response = await fetch(remoteUrl, { headers: { Authorization: `Bearer ${token}` } });
-  if (!response.ok) return res.status(502).json({ error: 'Não foi possível baixar a mídia da UZAPI' });
+  if (!response.ok) throw new Error('Não foi possível baixar a mídia da UZAPI');
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type') || row.media_type || 'application/octet-stream',
+    filename: row.content || 'arquivo',
+  };
+}
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const contentType = response.headers.get('content-type') || row.media_type || 'application/octet-stream';
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Length', String(buffer.length));
-  res.setHeader('Cache-Control', 'private, max-age=300');
-  return res.status(200).send(buffer);
+router.get('/messages/:messageId/media', requireUser(async (req: any, res: any) => {
+  try {
+    const row = await getMediaRow(req.params.messageId);
+    if (!row?.media_url) return res.status(404).json({ error: 'Mídia não encontrada' });
+    const media = await getRemoteMedia(row);
+    res.setHeader('Content-Type', media.contentType);
+    res.setHeader('Content-Length', String(media.buffer.length));
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.status(200).send(media.buffer);
+  } catch (error: any) {
+    console.error('Erro ao recuperar mídia', error);
+    return res.status(502).json({ error: error?.message || 'Não foi possível recuperar a mídia' });
+  }
+}));
+
+router.get('/messages/:messageId/media-download', requireUser(async (req: any, res: any) => {
+  try {
+    const row = await getMediaRow(req.params.messageId);
+    if (!row?.media_url) return res.status(404).json({ error: 'Mídia não encontrada' });
+    const media = await getRemoteMedia(row);
+    const safeFilename = String(media.filename || 'arquivo').replace(/[\\/\r\n]/g, '_');
+    res.setHeader('Content-Type', media.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    res.setHeader('Content-Length', String(media.buffer.length));
+    return res.status(200).send(media.buffer);
+  } catch (error: any) {
+    console.error('Erro no download de mídia', error);
+    return res.status(502).json({ error: error?.message || 'Não foi possível baixar o arquivo' });
+  }
 }));
 
 router.post('/conversations/:id/messages/advanced', requireUser(async (req: any, res: any) => {
   const { content, replyToMessageId, file } = req.body || {};
   const text = String(content || '').trim();
   const replyId = replyToMessageId ? String(replyToMessageId) : null;
+  const fileName = file ? String(file.name || 'arquivo') : '';
 
   const numberQ = await pool.query(`
     select wn.id,wn.phone_number_id,wn.uzapi_username,wn.status,ct.phone_number as contact_phone
@@ -185,9 +214,10 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
   let mediaUrlValue: string | null = null;
   let mediaTypeValue: string | null = null;
   let payload: any;
+  let localContent = text;
 
   if (file) {
-    const name = String(file.name || 'arquivo');
+    const name = fileName || 'arquivo';
     const mimeType = String(file.type || 'application/octet-stream').toLowerCase();
     const raw = String(file.data || '');
     const comma = raw.indexOf(',');
@@ -222,18 +252,23 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
 
     if (mimeType.startsWith('audio/')) {
       type = 'audio';
+      localContent = text || 'Áudio';
       payload = { to, type: 'audio', audio: { id: mediaId } };
     } else if (mimeType.startsWith('image/')) {
       type = 'image';
+      localContent = text || name;
       payload = { to, type: 'image', image: { id: mediaId, ...(text ? { caption: text } : {}) } };
     } else if (mimeType.startsWith('video/')) {
       type = 'video';
+      localContent = text || name;
       payload = { to, type: 'video', video: { id: mediaId, ...(text ? { caption: text } : {}) } };
     } else {
       type = 'document';
+      localContent = text || name;
       payload = { to, type: 'document', document: { id: mediaId, filename: name, ...(text ? { caption: text } : {}) } };
     }
   } else {
+    localContent = text;
     payload = { to, type: 'text', text: { preview_url: false, body: text }, delayMessage: 0, delayTyping: 0 };
   }
 
@@ -243,7 +278,7 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
     insert into public.messages(conversation_id,direction,content,media_url,media_type,sent_by_user_id,status,reply_to_message_id)
     values($1,'outbound',$2,$3,$4,$5,'pending',$6)
     returning *
-  `, [req.params.id, text || (type === 'audio' ? 'Áudio' : name), mediaUrlValue, mediaTypeValue, req.currentUser.id, replyId]);
+  `, [req.params.id, localContent, mediaUrlValue, mediaTypeValue, req.currentUser.id, replyId]);
   const local = inserted.rows[0];
 
   try {
@@ -260,7 +295,7 @@ router.post('/conversations/:id/messages/advanced', requireUser(async (req: any,
 
     const providerMessageId = apiData?.messageId || apiData?.id || apiData?.queueId || null;
     await pool.query("update public.messages set status='sent',provider_message_id=$2 where id=$1", [local.id, providerMessageId]);
-    await pool.query('update public.conversations set last_message_preview=$2,last_message_at=now(),updated_at=now() where id=$1', [req.params.id, text || (type === 'audio' ? 'Áudio' : name)]);
+    await pool.query('update public.conversations set last_message_preview=$2,last_message_at=now(),updated_at=now() where id=$1', [req.params.id, localContent]);
     broadcastRealtime({ type: 'message.created', conversationId: req.params.id });
 
     const full = await pool.query(`
@@ -302,7 +337,6 @@ router.post(
       const payload = req.body || {};
       const entries = Array.isArray(payload.entry) ? payload.entry : [];
       const token = process.env.UZAPI_ACCESS_TOKEN;
-      const version = process.env.UZAPI_VERSION || 'v1';
       if (!token) return next();
 
       let handledMedia = false;
@@ -329,19 +363,14 @@ router.post(
           if (!numberQ?.rows[0]) continue;
 
           const numberId = numberQ.rows[0].id;
-          const username = numberQ.rows[0].uzapi_username || process.env.UZAPI_USERNAME;
-          if (!username) continue;
-
           for (const message of mediaMessages) {
             const providerId = String(message?.id || '').trim() || null;
             if (!providerId) continue;
-
             const existing = await pool.query('select id from public.messages where provider_message_id=$1 limit 1', [providerId]);
             if (existing.rows[0]) continue;
 
             const phone = String(message?.from || '').replace(/\D/g, '');
             if (!phone) continue;
-
             const senderName = safeName(
               value?.contacts?.find((c: any) => String(c?.wa_id || '').replace(/\D/g, '') === phone)?.profile?.name ||
               value?.contacts?.[0]?.profile?.name ||
@@ -352,7 +381,6 @@ router.post(
             const media = message[type] || {};
             const mediaId = String(media?.id || '').trim();
             if (!mediaId) continue;
-
             const mimeType = String(
               media?.mime_type ||
               (type === 'audio' ? 'audio/ogg; codecs=opus' :
@@ -393,14 +421,7 @@ router.post(
                 conversation_id,direction,content,media_url,media_type,status,provider_message_id,created_at
               )
               values($1,'inbound',$2,$3,$4,'delivered',$5,coalesce(to_timestamp($6),now()))
-            `, [
-              cv.rows[0].id,
-              content,
-              mediaRef(mediaId),
-              mimeType,
-              providerId,
-              message?.timestamp || null,
-            ]);
+            `, [cv.rows[0].id, content, mediaRef(mediaId), mimeType, providerId, message?.timestamp || null]);
 
             broadcastRealtime({ type: 'message.received', conversationId: cv.rows[0].id });
             handledMedia = true;
