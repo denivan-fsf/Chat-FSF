@@ -893,3 +893,107 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =========================================================
+   HISTÓRICO DE MENSAGENS — ESTILO WHATSAPP
+   ========================================================= */
+
+.message-line {
+  display: flex;
+  width: 100%;
+  margin: 0 0 10px;
+}
+
+.message-line.received {
+  justify-content: flex-start;
+}
+
+.message-line.own {
+  justify-content: flex-end;
+}
+
+.bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  max-width: min(78%, 520px);
+}
+
+.message-line.received .bubble-wrap {
+  align-items: flex-start;
+}
+
+.message-line.own .bubble-wrap {
+  align-items: flex-end;
+}
+
+.bubble-author {
+  display: block;
+  margin: 0 0 4px 7px;
+  color: #66877b;
+  font: 600 9px var(--app-font-mono);
+}
+
+.bubble {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 10px 6px;
+  border-radius: 8px;
+  color: #294d45;
+  background: #ffffff;
+  border: 1px solid #dce7df;
+  box-shadow: 0 1px 1px rgba(13,49,48,.04);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.message-line.received .bubble {
+  border-top-left-radius: 3px;
+}
+
+.message-line.own .bubble {
+  color: #f0f8ed;
+  background: #164a45;
+  border-color: #164a45;
+  border-top-right-radius: 3px;
+}
+
+.bubble-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 3px;
+  padding: 0 5px;
+  color: #8a9f96;
+  font: 9px var(--app-font-mono);
+  line-height: 1;
+}
+
+.message-line.own .bubble-meta {
+  color: #78958d;
+}
+
+.message-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-status-read {
+  color: #49a9df;
+}
+
+@media (max-width: 590px) {
+  .bubble-wrap {
+    max-width: 86%;
+  }
+
+  .bubble {
+    font-size: 12px;
+  }
+}  
