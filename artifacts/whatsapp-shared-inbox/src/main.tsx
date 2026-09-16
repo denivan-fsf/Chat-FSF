@@ -6,6 +6,7 @@ import { installInboxEnhancements } from './inbox-enhancements';
 import { installAudioDurationEnhancement } from './audio-duration-enhancement';
 import { installAudioDirectEnhancement } from './audio-direct-enhancement';
 import { installUnreadCountEnhancement } from './inbox-unread-count';
+import { installSettingsStaticPanel } from './settings-static-panel';
 import './index.css';
 import './ui-fixes.css';
 
@@ -34,3 +35,4 @@ installInboxEnhancements();
 installAudioDurationEnhancement();
 installAudioDirectEnhancement();
 installUnreadCountEnhancement();
+installSettingsStaticPanel();
