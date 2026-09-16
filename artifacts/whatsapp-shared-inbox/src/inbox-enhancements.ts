@@ -69,7 +69,7 @@ function styles() {
     .fsf-audio-play{width:32px;height:32px;border:0;border-radius:50%;background:#163f37;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:none}
     .fsf-audio-play svg{width:15px;height:15px;fill:currentColor}
     .fsf-audio-progress{width:100%;min-width:0;accent-color:#163f37;cursor:pointer}
-    .fsf-audio-time{font:600 9px var(--app-font-mono);color:#547067;min-width:45px;text-align:right;white-space:nowrap}
+    .fsf-audio-time{font:600 9px var(--app-font-mono);color:#547067;min-width:70px;text-align:right;white-space:nowrap}
     .fsf-image{max-width:280px;max-height:240px;border-radius:8px;display:block}
     .fsf-video{max-width:320px;max-height:240px;border-radius:8px;display:block}
     .fsf-doc{display:block;color:inherit;text-decoration:none;padding:8px;border-radius:7px;background:rgba(90,120,105,.08)}
@@ -111,12 +111,27 @@ function addReplyButton(line: Element, message?: EnhancedMessage) {
   tools.appendChild(button); line.querySelector('.bubble-wrap')?.appendChild(tools);
 }
 
+function audioMimeForPlayer(message: EnhancedMessage, responseType: string) {
+  const remoteType = String(responseType || '').toLowerCase();
+  const storedType = String(message.mediaType || '').toLowerCase();
+  if (remoteType.startsWith('audio/')) return remoteType.split(';')[0];
+  if (storedType.startsWith('audio/')) return storedType.split(';')[0];
+  return 'audio/ogg';
+}
+
 async function mediaObjectUrl(message: EnhancedMessage) {
   if (!message.mediaUrl) return null;
   const cached = mediaObjectUrls.get(message.id); if (cached) return cached;
   const response = await fetch(`${API}/api/messages/${encodeURIComponent(message.id)}/media`,{credentials:'include',headers:authHeaders()});
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const blob = await response.blob(); const objectUrl = URL.createObjectURL(blob); mediaObjectUrls.set(message.id,objectUrl); return objectUrl;
+  const rawBlob = await response.blob();
+  const type = audioMimeForPlayer(message, rawBlob.type);
+  const blob = String(message.mediaType || '').toLowerCase().startsWith('audio/')
+    ? new Blob([rawBlob], { type })
+    : rawBlob;
+  const objectUrl = URL.createObjectURL(blob);
+  mediaObjectUrls.set(message.id,objectUrl);
+  return objectUrl;
 }
 
 function formatAudioTime(value:number){if(!Number.isFinite(value)||value<0)return '0:00';const minutes=Math.floor(value/60);const seconds=Math.floor(value%60).toString().padStart(2,'0');return `${minutes}:${seconds}`;}
@@ -127,15 +142,20 @@ function renderAudioPlayer(bubble:HTMLElement,src:string){
   const audio=document.createElement('audio');audio.preload='metadata';audio.src=src;audio.style.display='none';
   const play=document.createElement('button');play.type='button';play.className='fsf-audio-play';play.setAttribute('aria-label','Reproduzir áudio');play.innerHTML=audioIcon('play');
   const progress=document.createElement('input');progress.type='range';progress.className='fsf-audio-progress';progress.min='0';progress.max='100';progress.value='0';progress.step='0.1';progress.setAttribute('aria-label','Progresso do áudio');
-  const time=document.createElement('span');time.className='fsf-audio-time';time.textContent='0:00';
+  const time=document.createElement('span');time.className='fsf-audio-time';time.textContent='Carregando...';
+  const setDuration=()=>{if(Number.isFinite(audio.duration)&&audio.duration>0){time.textContent=`0:00 / ${formatAudioTime(audio.duration)}`;}};
   play.addEventListener('click',()=>{if(audio.paused)void audio.play().catch(()=>{});else audio.pause();});
   progress.addEventListener('input',()=>{if(Number.isFinite(audio.duration)&&audio.duration>0)audio.currentTime=(Number(progress.value)/100)*audio.duration;});
-  audio.addEventListener('loadedmetadata',()=>{time.textContent=`0:00 / ${formatAudioTime(audio.duration)}`;});
+  audio.addEventListener('loadedmetadata',setDuration);
+  audio.addEventListener('durationchange',setDuration);
+  audio.addEventListener('canplay',setDuration);
+  audio.addEventListener('error',()=>{time.textContent='Áudio indisponível';});
   audio.addEventListener('timeupdate',()=>{if(Number.isFinite(audio.duration)&&audio.duration>0){progress.value=String((audio.currentTime/audio.duration)*100);time.textContent=`${formatAudioTime(audio.currentTime)} / ${formatAudioTime(audio.duration)}`;}});
   audio.addEventListener('play',()=>{play.innerHTML=audioIcon('pause');play.setAttribute('aria-label','Pausar áudio');});
   audio.addEventListener('pause',()=>{play.innerHTML=audioIcon('play');play.setAttribute('aria-label','Reproduzir áudio');});
   audio.addEventListener('ended',()=>{progress.value='0';play.innerHTML=audioIcon('play');play.setAttribute('aria-label','Reproduzir áudio');});
   wrap.append(audio,play,progress,time);bubble.appendChild(wrap);
+  try { audio.load(); } catch { /* carregamento já pode ter começado */ }
 }
 
 async function renderMedia(bubble:HTMLElement,message:EnhancedMessage){
@@ -167,21 +187,45 @@ function chooseFile(){const input=document.createElement('input');input.type='fi
 
 function microphoneIcon(){return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8.5" y="3" width="7" height="11" rx="3.5" stroke="currentColor" stroke-width="2"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 21h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;}
 async function record(button:HTMLButtonElement){
-  if(recorder){recorder.stop();return;}if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){window.alert('Seu navegador não permite gravação de áudio.');return;}
-  try{recorderStream=await navigator.mediaDevices.getUserMedia({audio:true});const preferred=['audio/ogg;codecs=opus','audio/ogg','audio/webm;codecs=opus','audio/webm'];const mime=preferred.find((item)=>MediaRecorder.isTypeSupported(item));recorder=mime?new MediaRecorder(recorderStream,{mimeType:mime}):new MediaRecorder(recorderStream);chunks=[];button.innerHTML='<span aria-hidden="true">■</span>';button.classList.add('recording');button.title='Parar gravação';recorder.ondataavailable=(event)=>{if(event.data.size)chunks.push(event.data);};recorder.onstop=()=>{const active=recorder;const mimeType=active?.mimeType||'audio/webm';const ext=mimeType.includes('ogg')?'ogg':'webm';file=new File([new Blob(chunks,{type:mimeType})],`audio-${Date.now()}.${ext}`,{type:mimeType});recorderStream?.getTracks().forEach((track)=>track.stop());recorder=null;recorderStream=null;chunks=[];button.innerHTML=microphoneIcon();button.title='Gravar áudio';button.classList.remove('recording');showFile();};recorder.start(200);
-  }catch(error){recorderStream?.getTracks().forEach((track)=>track.stop());recorder=null;recorderStream=null;chunks=[];button.innerHTML=microphoneIcon();button.title='Gravar áudio';button.classList.remove('recording');window.alert(error instanceof Error?error.message:'Não foi possível acessar o microfone.');}
+  if(recorder){recorder.stop();return;}
+  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){window.alert('Seu navegador não permite gravação de áudio.');return;}
+  try{
+    recorderStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const preferred=['audio/ogg;codecs=opus','audio/ogg','audio/webm;codecs=opus','audio/webm'];
+    const mime=preferred.find((item)=>MediaRecorder.isTypeSupported(item));
+    recorder=mime?new MediaRecorder(recorderStream,{mimeType:mime}):new MediaRecorder(recorderStream);chunks=[];
+    button.innerHTML='<span aria-hidden="true">■</span>';button.classList.add('recording');button.title='Parar gravação';
+    recorder.ondataavailable=(event)=>{if(event.data.size)chunks.push(event.data);};
+    recorder.onstop=()=>{const activeRecorder=recorder;const mimeType=activeRecorder?.mimeType||'audio/ogg';const ext=mimeType.includes('ogg')?'ogg':'webm';const blob=new Blob(chunks,{type:mimeType});file=new File([blob],`audio-${Date.now()}.${ext}`,{type:mimeType});recorderStream?.getTracks().forEach((track)=>track.stop());recorder=null;recorderStream=null;chunks=[];button.innerHTML=microphoneIcon();button.title='Gravar áudio';button.classList.remove('recording');showFile();};
+    recorder.start(200);
+  }catch(error){recorderStream?.getTracks().forEach((track)=>track.stop());recorder=null;recorderStream=null;button.innerHTML=microphoneIcon();button.title='Gravar áudio';button.classList.remove('recording');window.alert(error instanceof Error?error.message:'Não foi possível acessar o microfone.');}
 }
+
+function appendSent(message:EnhancedMessage){const thread=document.querySelector('.messages-scroller');if(!thread)return;const line=document.createElement('div');line.className='message-line own';line.dataset.testid=`message-${message.id}`;const wrap=document.createElement('div');wrap.className='bubble-wrap';const author=document.createElement('span');author.className='bubble-author';author.textContent='Você';wrap.appendChild(author);if(message.replyTo){const q=document.createElement('div');q.className='fsf-quote';q.textContent=message.replyTo.content||'Mensagem';wrap.appendChild(q);}const bubble=document.createElement('div');bubble.className='bubble';wrap.appendChild(bubble);const meta=document.createElement('small');meta.className='bubble-meta';meta.textContent=new Date(message.createdAt||Date.now()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});meta.insertAdjacentHTML('beforeend',' ✓');wrap.appendChild(meta);line.appendChild(wrap);thread.appendChild(line);thread.scrollTop=thread.scrollHeight;addReplyButton(line,message);void renderMedia(bubble,message);}
 
 function syncTextarea(textarea:HTMLTextAreaElement,value:string){const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')?.set;if(setter)setter.call(textarea,value);else textarea.value=value;textarea.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward',data:null}));textarea.dispatchEvent(new Event('change',{bubbles:true}));}
 
 async function send(){
   if(sending)return;const textarea=document.querySelector('.composer textarea') as HTMLTextAreaElement|null;if(!textarea||textarea.disabled)return;const content=textarea.value.trim();if(!content&&!file)return;const id=await activeConversation();if(!id){window.alert('Não consegui identificar a conversa aberta.');return;}sending=true;
-  try{const body:any={content,replyToMessageId:reply?.id||null};if(file)body.file={name:file.name,type:file.type||'application/octet-stream',data:await fileToDataUrl(file)};await api(`/api/conversations/${encodeURIComponent(id)}/messages/advanced`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});syncTextarea(textarea,'');file=null;showFile();clearReply();window.setTimeout(()=>void enhanceMessages(),250);window.setTimeout(()=>void enhanceMessages(),900);}
+  try{const body:any={content,replyToMessageId:reply?.id||null};if(file)body.file={name:file.name,type:file.type||'application/octet-stream',data:await fileToDataUrl(file)};const message=await api(`/api/conversations/${encodeURIComponent(id)}/messages/advanced`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});syncTextarea(textarea,'');file=null;showFile();clearReply();appendSent(message);requestAnimationFrame(()=>textarea.focus());}
   catch(error){window.alert(error instanceof Error?error.message:'Não foi possível enviar.');}
   finally{sending=false;}
 }
 
-function composer(){const root=document.querySelector('.composer');if(!root)return;const textarea=root.querySelector('textarea') as HTMLTextAreaElement|null;if(!textarea)return;const oldSend=root.querySelector('.send-btn') as HTMLElement|null;if(oldSend)oldSend.style.display='none';const oldAttach=root.querySelector('.composer-tool') as HTMLElement|null;if(oldAttach)oldAttach.style.display='none';if(root.querySelector('.fsf-compose-tools'))return;const tools=document.createElement('div');tools.className='fsf-compose-tools';const attach=document.createElement('button');attach.type='button';attach.className='fsf-compose-btn';attach.title='Anexar arquivo';attach.innerHTML='<span aria-hidden="true">📎</span>';attach.onclick=chooseFile;const mic=document.createElement('button');mic.type='button';mic.className='fsf-compose-btn';mic.title='Gravar áudio';mic.innerHTML=microphoneIcon();mic.onclick=()=>void record(mic);const hint=document.createElement('span');hint.className='fsf-compose-hint';hint.textContent='Enter para enviar';const sendButton=document.createElement('button');sendButton.type='button';sendButton.className='fsf-compose-btn fsf-send-btn';sendButton.title='Enviar mensagem';sendButton.textContent='➤';sendButton.onclick=()=>void send();tools.append(attach,mic,hint,sendButton);root.appendChild(tools);}
+function composer(){
+  const root=document.querySelector('.composer');if(!root)return;const textarea=root.querySelector('textarea') as HTMLTextAreaElement|null;if(!textarea)return;
+  const oldSend=root.querySelector('.send-btn') as HTMLElement|null;if(oldSend)oldSend.style.display='none';
+  const oldAttach=root.querySelector('.composer-tool') as HTMLElement|null;if(oldAttach)oldAttach.style.display='none';
+  const oldHint=root.querySelector('.composer-hint') as HTMLElement|null;if(oldHint)oldHint.style.display='none';
+  if(root.querySelector('.fsf-compose-tools'))return;
+  const tools=document.createElement('div');tools.className='fsf-compose-tools';
+  const attach=document.createElement('button');attach.type='button';attach.className='fsf-compose-btn';attach.title='Anexar arquivo';attach.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.48l9.19-9.19a4 4 0 1 1 5.66 5.66l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';attach.onclick=chooseFile;
+  const mic=document.createElement('button');mic.type='button';mic.className='fsf-compose-btn';mic.title='Gravar áudio';mic.innerHTML=microphoneIcon();mic.onclick=()=>void record(mic);
+  const hint=document.createElement('span');hint.className='fsf-compose-hint';hint.textContent='Enter para enviar';
+  const sendButton=document.createElement('button');sendButton.type='button';sendButton.className='fsf-compose-btn fsf-send-btn';sendButton.title='Enviar mensagem';sendButton.textContent='➤';sendButton.onclick=()=>void send();
+  tools.append(attach,mic,hint,sendButton);root.appendChild(tools);
+}
 
-let timer:number|undefined;function schedule(){if(timer)clearTimeout(timer);timer=window.setTimeout(()=>{composer();void enhanceMessages();},100);}
+let timer:number|undefined;
+function schedule(){if(timer)clearTimeout(timer);timer=window.setTimeout(()=>{composer();void enhanceMessages();},100);}
 export function installInboxEnhancements(){styles();const observer=new MutationObserver(schedule);observer.observe(document.body,{childList:true,subtree:true});schedule();}
