@@ -9,6 +9,7 @@ import { installUnreadCountEnhancement } from './inbox-unread-count';
 import { installSettingsStaticPanel } from './settings-static-panel';
 import { installMediaViewerEnhancement } from './media-viewer-enhancement';
 import { installMediaUiFinal } from './media-ui-final';
+import { installUiAlertFix } from './ui-alert-fix';
 import './index.css';
 import './ui-fixes.css';
 
@@ -27,6 +28,7 @@ createRoot(rootElement).render(
   </React.StrictMode>,
 );
 
+installUiAlertFix();
 installInboxEnhancements();
 installAudioDurationEnhancement();
 installAudioDirectEnhancement();
