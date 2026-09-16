@@ -1,0 +1,75 @@
+/* Ajustes finais de layout do aplicativo */
+
+/* A aplicação ocupa a janela inteira; o scroll fica somente dentro dos painéis */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.app-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-main {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-content {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Mantém a lista de conversas e o histórico com scroll interno */
+.conversation-list,
+.messages-scroller {
+  scrollbar-width: thin;
+}
+
+/* Perfil do canto inferior esquerdo: abre para cima e permanece dentro da viewport */
+.sidebar-bottom .relative-anchor {
+  position: relative;
+}
+
+.sidebar-bottom .profile-menu {
+  top: auto !important;
+  right: auto !important;
+  left: 0 !important;
+  bottom: calc(100% + 8px) !important;
+  transform-origin: bottom left;
+  z-index: 200 !important;
+}
+
+/* Evita que menus laterais sejam cortados pela borda da viewport */
+.sidebar {
+  position: relative;
+  overflow: visible;
+}
+
+.sidebar-bottom {
+  position: relative;
+}
+
+/* Botão de perfil continua clicável sem mover o restante da interface */
+.sidebar-bottom .profile-row {
+  position: relative;
+  z-index: 201;
+}
+
+/* Nos celulares o menu se adapta à largura disponível */
+@media (max-width: 590px) {
+  .sidebar-bottom .profile-menu {
+    left: 0 !important;
+    right: auto !important;
+    width: min(285px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
+}
